@@ -9,7 +9,8 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pankajyadav2943.ParkEaseHaven"
     },
     "android": {
       "adaptiveIcon": {
@@ -35,7 +36,7 @@
       "expo-font"
     ],
     "splash": {
-      "image": "./assets/images/icon.png",
+      "image": "./assets/images/splashscreen_logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
