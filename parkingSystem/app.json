@@ -29,12 +29,6 @@
     },
     "plugins": [
       "expo-router",
-      [
-        "expo-splash-screen",
-        {
-          "preventAutoHide": true
-        }
-      ],
       "expo-video",
       "expo-font"
     ],
