@@ -35,11 +35,6 @@
       "expo-video",
       "expo-font"
     ],
-    "splash": {
-      "image": "./assets/images/splashscreen_logo.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "experiments": {
       "typedRoutes": true
     },
