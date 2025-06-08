@@ -32,6 +32,11 @@
       "expo-video",
       "expo-font"
     ],
+    "splash": {
+      "image": "",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
     "experiments": {
       "typedRoutes": true
     },
