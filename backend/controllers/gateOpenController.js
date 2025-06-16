@@ -2,8 +2,8 @@ const Booking = require("../models/Booking");
 const mqttClient = require("../utils/mqttClient");
 const { waitForAck } = require("../utils/redisClient");
 
-const PARKING_LAT = 28.8167148;
-const PARKING_LNG = 77.1330412;
+const PARKING_LAT = 28.6298810;
+const PARKING_LNG = 76.9560120;
 const MAX_DISTANCE_METERS = 200;
 
 const getDistanceFromLatLonInMeters = (lat1, lon1, lat2, lon2) => {
