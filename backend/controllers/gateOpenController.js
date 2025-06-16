@@ -81,13 +81,23 @@ module.exports = {
 
                         console.log(`[REDIS ACK] Received from ESP32: ${ack}`);
 
-                        if (ack === "success") {
+                        let ackObj;
+                        try {
+                            ackObj = JSON.parse(ack);
+                        } catch (e) {
+                            console.error("Invalid ACK format:", ack);
+                            return res.status(500).json({ success: false, message: "Invalid ACK format from ESP32" });
+                        }
+
+                        if (ackObj.status === "success") {
                             booking.gateOpened = true;
                             await booking.save();
-
                             return res.status(200).json({ success: true, message: "Gate opened successfully." });
                         } else {
-                            return res.status(500).json({ success: false, message: `ESP32 responded with error: ${ack}` });
+                            return res.status(400).json({
+                                success: false,
+                                message: ackObj.message || "ESP32 reported an error.",
+                            });
                         }
                     } catch (e) {
                         console.error("[REDIS ACK ERROR] Timeout or failure:", e.message);

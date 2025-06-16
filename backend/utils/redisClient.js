@@ -1,5 +1,27 @@
 const { createClient } = require('redis');
-console.log("in redis")
+
+console.log("in redis");
+
+const publisher = createClient({
+  socket: {
+    host: process.env.REDIS_HOST,
+    port: parseInt(process.env.REDIS_PORT),
+    tls: {}
+  },
+  password: process.env.REDIS_PASSWORD,
+  username: 'default',
+});
+
+publisher.on('error', (err) => console.error('Redis Publisher Error:', err));
+
+(async () => {
+  await publisher.connect();
+})();
+
+async function publish(channel, message) {
+  console.log(`[REDIS PUBLISH] Channel: ${channel}, Message: ${message}`);
+  await publisher.publish(channel, message);
+}
 
 async function waitForAck(channel, timeoutSec = 15) {
   return new Promise(async (resolve, reject) => {
@@ -7,7 +29,7 @@ async function waitForAck(channel, timeoutSec = 15) {
       socket: {
         host: process.env.REDIS_HOST,
         port: parseInt(process.env.REDIS_PORT),
-        tls: {}, 
+        tls: {},
       },
       password: process.env.REDIS_PASSWORD,
       username: 'default',
@@ -41,4 +63,4 @@ async function waitForAck(channel, timeoutSec = 15) {
   });
 }
 
-module.exports = { waitForAck };
+module.exports = { waitForAck, publish };

@@ -156,8 +156,8 @@ const UserReservations = () => {
         alert(res.data.message || "Failed to open gate.");
       }
     } catch (err) {
-      console.error(err);
-      alert("Something went wrong while opening the gate.");
+      const msg = err.response?.data?.message || "Something went wrong";
+      alert(msg);
     } finally {
       setIsGateOpening(false);
     }
