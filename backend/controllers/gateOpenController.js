@@ -2,8 +2,8 @@ const Booking = require("../models/Booking");
 const mqttClient = require("../utils/mqttClient");
 const { waitForAck } = require("../utils/redisClient");
 
-const PARKING_LAT = 28.6298810;
-const PARKING_LNG = 76.9560120;
+const PARKING_LAT = 28.8167148;
+const PARKING_LNG = 77.1330412;
 const MAX_DISTANCE_METERS = 200;
 
 const getDistanceFromLatLonInMeters = (lat1, lon1, lat2, lon2) => {
@@ -59,9 +59,7 @@ module.exports = {
                 });
             }
 
-            console.log(`[GATE OPEN] Publishing MQTT command for reservationId: ${reservationId}`);
 
-            // Subscribe BEFORE publishing to avoid race conditions
             const waitPromise = waitForAck(reservationId, 15);
 
             mqttClient.client.publish(
@@ -74,12 +72,8 @@ module.exports = {
                         return res.status(500).json({ success: false, message: "Failed to send gate command" });
                     }
 
-                    console.log("[MQTT] Command published to /esp32/gate/open");
-
                     try {
                         const ack = await waitPromise;
-
-                        console.log(`[REDIS ACK] Received from ESP32: ${ack}`);
 
                         let ackObj;
                         try {

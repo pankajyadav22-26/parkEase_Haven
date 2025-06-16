@@ -1,7 +1,5 @@
 const { createClient } = require('redis');
 
-console.log("in redis");
-
 const publisher = createClient({
   socket: {
     host: process.env.REDIS_HOST,
@@ -19,7 +17,6 @@ publisher.on('error', (err) => console.error('Redis Publisher Error:', err));
 })();
 
 async function publish(channel, message) {
-  console.log(`[REDIS PUBLISH] Channel: ${channel}, Message: ${message}`);
   await publisher.publish(channel, message);
 }
 

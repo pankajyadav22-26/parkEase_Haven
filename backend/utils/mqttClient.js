@@ -28,7 +28,6 @@ client.on('message', async (topic, message) => {
   if (topic === '/esp32/status') {
     if (msg === 'online') {
       esp32LastSeen = new Date();
-      console.log(`ESP32 heartbeat received at ${esp32LastSeen.toISOString()}`);
     }
     return;
   }
@@ -37,7 +36,6 @@ client.on('message', async (topic, message) => {
     const reservationId = topic.split('/').pop();
     try {
       await redisClient.publish(reservationId, msg);
-      console.log(`Published ack to Redis channel ${reservationId}: ${msg}`);
     } catch (e) {
       console.error('Failed to publish ack to Redis:', e);
     }

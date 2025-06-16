@@ -276,7 +276,6 @@ const Reservation = ({ navigation }) => {
         ]);
       }
     } catch (err) {
-      console.log(err);
       Alert.alert("Error", "Payment could not be processed.");
     }
   };

@@ -31,12 +31,6 @@ module.exports = {
             const slotDocs = await Slot.find(); // full Mongoose docs
             const slots = slotDocs.map(slot => slot.toObject({ virtuals: true }));
 
-            // console.log("With virtuals:", slots.map(s => ({
-            //     slotName: s.slotName,
-            //     slotStatus: s.slotStatus,
-            //     currentStatus: s.currentStatus
-            // })));
-
             res.status(200).json({
                 message: 'Slots fetched successfully',
                 slots
@@ -112,27 +106,27 @@ module.exports = {
     },
     updateSlotStatus: async (req, res) => {
         try {
-          const updates = Array.isArray(req.body) ? req.body : [req.body]; // allow single or multiple
-      
-          const results = [];
-      
-          for (const { slotName, status } of updates) {
-            const slot = await Slot.findOne({ slotName });
-      
-            if (!slot) {
-              results.push({ slotName, success: false, message: "Slot not found" });
-              continue;
+            const updates = Array.isArray(req.body) ? req.body : [req.body]; // allow single or multiple
+
+            const results = [];
+
+            for (const { slotName, status } of updates) {
+                const slot = await Slot.findOne({ slotName });
+
+                if (!slot) {
+                    results.push({ slotName, success: false, message: "Slot not found" });
+                    continue;
+                }
+
+                slot.slotStatus = status;
+                await slot.save();
+                results.push({ slotName, success: true, message: `Updated to ${status}` });
             }
-      
-            slot.slotStatus = status;
-            await slot.save();
-            results.push({ slotName, success: true, message: `Updated to ${status}` });
-          }
-      
-          res.status(200).json({ message: "Batch update completed", results });
+
+            res.status(200).json({ message: "Batch update completed", results });
         } catch (err) {
-          console.error("Failed to update slot status", err);
-          res.status(500).json({ message: "Internal Server Error" });
+            console.error("Failed to update slot status", err);
+            res.status(500).json({ message: "Internal Server Error" });
         }
-      }
+    }
 }
