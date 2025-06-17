@@ -33,16 +33,9 @@
       "expo-font"
     ],
     "splash": {
-      "image": "",
+      "image": "./assets/images/icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
-    },
-    "dangerous": {
-      "extensions": [
-        {
-          "path": "./assets/native-override/android/res/values/styles.xml"
-        }
-      ]
     },
     "experiments": {
       "typedRoutes": true
