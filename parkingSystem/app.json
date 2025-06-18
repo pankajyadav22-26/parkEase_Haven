@@ -12,15 +12,25 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.pankajyadav2943.ParkEaseHaven",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "This app uses your location to determine proximity to parking gates."
       }
     },
     "android": {
+      "package": "com.pankajyadav2943.ParkEaseHaven",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.pankajyadav2943.ParkEaseHaven"
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyBeGhbkZf0AlgjwL8uM6JEvoSLJ_ARdbSI"
+        }
+      }
     },
     "web": {
       "bundler": "metro",
@@ -41,7 +51,10 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
+      "router": {},
+      "eas": {
+        "projectId": "06b166b8-22f1-42db-9169-56232666c579"
+      }
     }
   }
 }
