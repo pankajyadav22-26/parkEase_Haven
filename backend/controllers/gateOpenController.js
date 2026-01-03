@@ -4,7 +4,7 @@ const { waitForAck } = require("../utils/redisClient");
 
 const PARKING_LAT = 28.8167148;
 const PARKING_LNG = 77.1330412;
-const MAX_DISTANCE_METERS = 200;
+const MAX_DISTANCE_METERS = 1200000;
 
 const getDistanceFromLatLonInMeters = (lat1, lon1, lat2, lon2) => {
     const R = 6371000;
