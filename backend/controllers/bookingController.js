@@ -1,4 +1,6 @@
 const Booking = require("../models/Booking");
+const PricingDataset = require("../models/PricingDataset");
+const Slot = require("../models/Slot");
 
 module.exports = {
   saveBooking: async (req, res) => {
@@ -20,6 +22,26 @@ module.exports = {
       });
 
       await booking.save();
+
+      try {
+        const now = new Date();
+        const totalSlots = await Slot.countDocuments();
+        const occupiedSlots = await Slot.countDocuments({ slotStatus: "occupied" });
+
+        await PricingDataset.create({
+          timestamp: now,
+          hourOfDay: now.getHours(),
+          dayOfWeek: now.getDay(),
+          isWeekend: (now.getDay() === 0 || now.getDay() === 6),
+          totalSlots,
+          occupiedSlots,
+          occupancyRate: totalSlots > 0 ? (occupiedSlots / totalSlots) : 0,
+          finalPrice: amount,
+          wasBooked: true
+        });
+      } catch (logError) {
+        console.error("Failed to log dataset:", logError);
+      }
 
       res.status(201).json({ message: "Booking saved successfully" });
     } catch (err) {
