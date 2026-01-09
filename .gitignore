@@ -3,3 +3,8 @@ backend/node_modules
 backend/test
 esp32Simulate
 parkingSystem/.env
+ml_service/.env
+ml_service/.venv
+ml_service/__pycache__
+ml_service/pricing_model.pkl
+ml_service/train_model.py

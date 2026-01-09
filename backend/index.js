@@ -9,6 +9,8 @@ const app = express();
 require("./utils/cleanPastReservations");
 require("./utils/mqttClient");
 require("./utils/redisClient");
+const mlScheduler = require("./utils/mlScheduler");
+mlScheduler();
 
 
 // Routers
