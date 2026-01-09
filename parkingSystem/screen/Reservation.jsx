@@ -9,13 +9,15 @@ import {
   TextInput,
   ScrollView,
   KeyboardAvoidingView,
+  ActivityIndicator,
 } from "react-native";
-import React, { useState, useContext } from "react";
+import React, { useState, useContext, useEffect } from "react";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { AuthContext } from "../contexts/AuthContext";
 import { format } from "date-fns";
 import { backendUrl } from "@/constants";
 import { useStripe } from "@stripe/stripe-react-native";
+import axios from "axios";
 
 const Reservation = ({ navigation }) => {
   const { user, isLoggedIn } = useContext(AuthContext);
@@ -33,7 +35,15 @@ const Reservation = ({ navigation }) => {
   const [payment, setPayment] = useState(0);
   const [slotsChecked, setSlotsChecked] = useState(false);
 
+  const [isCalculating, setIsCalculating] = useState(false);
+
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
+
+  useEffect(() => {
+    if (startTime && endTime) {
+      fetchDynamicPrice(startTime, endTime);
+    }
+  }, [startTime, endTime]);
 
   const resetForm = () => {
     setStartTime(null);
@@ -141,15 +151,37 @@ const Reservation = ({ navigation }) => {
     }
   };
 
-  const calculatePayment = () => {
-    const durationHours = (endTime - startTime) / (1000 * 60 * 60);
-    const total = durationHours * 50;
-    setPayment(total.toFixed(2));
+  const fetchDynamicPrice = async (start, end) => {
+    if (!start || !end) return;
+
+    if (end <= start) return;
+
+    setIsCalculating(true);
+    try {
+      const response = await axios.post(
+        `${backendUrl}/api/booking/calculate-price`,
+        {
+          startTime: start,
+          endTime: end,
+        }
+      );
+
+      if (response.data) {
+        setPayment(response.data.totalAmount);
+      }
+    } catch (error) {
+      console.error("Failed to fetch price:", error);
+      Alert.alert(
+        "Error",
+        "Could not calculate dynamic price. Please check connection."
+      );
+    } finally {
+      setIsCalculating(false);
+    }
   };
 
   const handleSlotSelect = (slot) => {
     setSelectedSlot(slot);
-    calculatePayment();
   };
 
   const validateAndPay = async () => {
@@ -202,7 +234,7 @@ const Reservation = ({ navigation }) => {
           body: JSON.stringify({
             userId: user._id,
             transactionId,
-            amount : payment,
+            amount: payment,
             status: "failed",
             timestamp: new Date().toISOString(),
           }),
@@ -220,12 +252,12 @@ const Reservation = ({ navigation }) => {
                 body: JSON.stringify({
                   userId: user._id,
                   transactionId,
-                  amount : payment,
+                  amount: payment,
                   status: "success",
                   timestamp: new Date().toISOString(),
                 }),
               });
-              
+
               try {
                 const bookingDetails = {
                   userId: user._id,
@@ -237,7 +269,6 @@ const Reservation = ({ navigation }) => {
                   endTime,
                 };
 
-                // Save booking
                 await fetch(`${backendUrl}/api/booking/save`, {
                   method: "POST",
                   headers: {
@@ -409,15 +440,20 @@ const Reservation = ({ navigation }) => {
                 value={carNumber}
                 onChangeText={setCarNumber}
               />
+
               <TouchableOpacity
                 style={[
                   styles.payButton,
-                  !isFormComplete && styles.disabledButton,
+                  (!isFormComplete || isCalculating) && styles.disabledButton,
                 ]}
                 onPress={validateAndPay}
-                disabled={!isFormComplete}
+                disabled={!isFormComplete || isCalculating}
               >
-                <Text style={styles.payText}>Pay ₹{payment}</Text>
+                {isCalculating ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.payText}>Pay ₹{payment}</Text>
+                )}
               </TouchableOpacity>
             </View>
           )}
@@ -430,23 +466,43 @@ const Reservation = ({ navigation }) => {
 export default Reservation;
 
 const styles = StyleSheet.create({
-  scrollContainer: {
-    flexGrow: 1,
-  },
   container: {
     flex: 1,
     padding: 20,
-    backgroundColor: "#fff",
+    backgroundColor: "#f5f5f5",
+  },
+  scrollContainer: {
+    flexGrow: 1,
   },
   title: {
     fontSize: 24,
     fontWeight: "bold",
+    marginBottom: 20,
     textAlign: "center",
+  },
+  input: {
+    backgroundColor: "#fff",
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+  checkButton: {
+    backgroundColor: "#007BFF",
+    padding: 15,
+    borderRadius: 10,
+    alignItems: "center",
     marginBottom: 20,
   },
-  label: {
+  checkButtonText: {
+    color: "#fff",
+    fontWeight: "bold",
     fontSize: 16,
-    fontWeight: "500",
+  },
+  label: {
+    fontSize: 18,
+    fontWeight: "bold",
     marginBottom: 10,
   },
   slotsContainer: {
@@ -455,106 +511,82 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   slot: {
+    width: "30%",
+    backgroundColor: "#e0e0e0",
     padding: 15,
     borderRadius: 10,
-    backgroundColor: "#e0e0e0",
-    marginBottom: 10,
-    width: "48%",
     alignItems: "center",
+    marginBottom: 10,
   },
   selectedSlot: {
-    backgroundColor: "#4caf50",
+    backgroundColor: "#28a745",
   },
   slotText: {
-    color: "#000",
-    fontWeight: "600",
+    fontWeight: "bold",
+  },
+  noSlotsText: {
+    textAlign: "center",
+    color: "red",
+    marginTop: 10,
   },
   form: {
-    marginTop: 10,
+    marginTop: 20,
   },
   selectedSlotText: {
     fontSize: 16,
-    fontWeight: "500",
+    fontWeight: "bold",
     marginBottom: 10,
     color: "#333",
   },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    padding: 10,
-    marginBottom: 12,
-    borderRadius: 8,
-  },
   payButton: {
-    backgroundColor: "#2196f3",
+    backgroundColor: "#28a745",
     padding: 15,
+    borderRadius: 10,
     alignItems: "center",
-    borderRadius: 8,
-    marginBottom: 15,
+    marginTop: 10,
   },
   disabledButton: {
-    backgroundColor: "#a0a0a0",
+    backgroundColor: "#ccc",
   },
   payText: {
     color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "bold",
+    fontSize: 18,
   },
   lockedContainer: {
     flex: 1,
-    backgroundColor: "#fff",
+    justifyContent: "center",
     alignItems: "center",
-    paddingTop: 10,
+    padding: 20,
+    backgroundColor: "#fff",
   },
   title1: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 8,
+    marginBottom: 30,
+    color: "#333",
   },
   lockedImage: {
-    width: "100%",
-    height: "70%",
+    width: 200,
+    height: 200,
+    marginBottom: 20,
     resizeMode: "contain",
-    marginTop: 10,
   },
   lockedText: {
-    fontSize: 20,
+    fontSize: 18,
+    color: "#666",
+    marginBottom: 20,
     textAlign: "center",
-    color: "#252F40",
-    marginTop: 12,
-    paddingHorizontal: 12,
-    fontWeight: "700",
   },
   loginButton: {
-    marginTop: 20,
-    backgroundColor: "midnightblue",
+    backgroundColor: "#007BFF",
     paddingVertical: 12,
     paddingHorizontal: 30,
-    borderRadius: 8,
+    borderRadius: 25,
   },
   loginButtonText: {
     color: "#fff",
     fontSize: 16,
-    fontWeight: "600",
-  },
-  checkButton: {
-    backgroundColor: "#0066cc",
-    padding: 12,
-    borderRadius: 8,
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  checkButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-    fontSize: 16,
-  },
-  noSlotsText: {
-    fontSize: 16,
-    color: "#f44336", // red color
-    fontWeight: "600",
-    textAlign: "center",
-    marginVertical: 10,
+    fontWeight: "bold",
   },
 });
