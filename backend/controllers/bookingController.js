@@ -2,6 +2,8 @@ const Booking = require("../models/Booking");
 const PricingDataset = require("../models/PricingDataset");
 const Slot = require("../models/Slot");
 const axios = require("axios");
+const NodeCache = require("node-cache");
+const myCache = new NodeCache({ stdTTL: 300 });
 
 module.exports = {
   saveBooking: async (req, res) => {
@@ -65,6 +67,12 @@ module.exports = {
       return res.status(400).json({ message: "Start and End time required" });
     }
 
+    const cacheKey = `price_${startTime}_${endTime}`;
+    const cachedData = myCache.get(cacheKey);
+    if (cachedData) {
+      return res.status(200).json(cachedData);
+    }
+
     try {
       const start = new Date(startTime);
       const end = new Date(endTime);
@@ -92,8 +100,8 @@ module.exports = {
         occupancy: occupancyRate
       };
 
-      const mlServiceUrl = process.env.ML_SERVICE_URL || 'http://localhost:5000';
-      let hourlyRate = 50;
+      const mlServiceUrl = process.env.ML_SERVICE_URL || 'http://localhost:5001';
+      let hourlyRate = 51;
 
       try {
         const response = await axios.post(`${mlServiceUrl}/predict_price`, mlPayload);
@@ -106,13 +114,16 @@ module.exports = {
 
       const totalPrice = Math.round(hourlyRate * durationHours);
 
-      res.status(200).json({
+      responseData = {
         baseRate: hourlyRate,
         totalAmount: totalPrice,
         occupancy: occupancyRate,
         message: "Price calculated successfully"
-      });
+      };
 
+      myCache.set(cacheKey, responseData);
+
+      res.status(200).json(responseData);
     } catch (err) {
       console.error("Price calculation failed:", err);
       res.status(500).json({ message: "Internal server error" });
