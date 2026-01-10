@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import joblib
 import io
 import os
+import pandas as pd
 from retrain_model import retrain_pipeline, get_database
 
 app = Flask(__name__)
@@ -33,8 +34,16 @@ def predict_price():
 
     try:
         data = request.get_json()
-        features = [[data['hour'], data['day_of_week'], data['is_weekend'], data['occupancy']]]
-        predicted_price = model.predict(features)[0]
+        
+        features_df = pd.DataFrame([{
+            'hour_of_day': data['hour'],
+            'day_of_week': data['day_of_week'],
+            'is_weekend': data['is_weekend'],
+            'occupancy_rate': data['occupancy']
+        }])
+
+        predicted_price = model.predict(features_df)[0]
+
         return jsonify({"status": "success", "predicted_price": round(predicted_price, 2)})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
@@ -42,10 +51,8 @@ def predict_price():
 @app.route('/retrain', methods=['POST'])
 def trigger_retrain():
     result = retrain_pipeline()
-    
     if result['status'] == 'success':
         load_model()
-        
     return jsonify(result)
 
 if __name__ == '__main__':

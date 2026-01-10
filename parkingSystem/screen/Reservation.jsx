@@ -39,12 +39,6 @@ const Reservation = ({ navigation }) => {
 
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
-  useEffect(() => {
-    if (startTime && endTime) {
-      fetchDynamicPrice(startTime, endTime);
-    }
-  }, [startTime, endTime]);
-
   const resetForm = () => {
     setStartTime(null);
     setEndTime(null);
@@ -110,6 +104,8 @@ const Reservation = ({ navigation }) => {
       Alert.alert("Validation Error", "End time must be after Start time.");
       return;
     }
+
+    fetchDynamicPrice(startTime, endTime);
 
     try {
       const response = await fetch(
