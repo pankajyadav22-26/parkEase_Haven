@@ -11,10 +11,6 @@ app = Flask(__name__)
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:3000/api/slotoperations/updateSlotStatus")
 
-if not BACKEND_URL:
-    print("WARNING: BACKEND_URL not found in .env. Using default.")
-else:
-    print(f"Backend URL configured: {BACKEND_URL}")
 
 PROTOTXT = "MobileNetSSD_deploy.prototxt"
 MODEL = "MobileNetSSD_deploy.caffemodel"
@@ -73,25 +69,40 @@ def analyze_slot_with_ai(slot_image):
 
 @app.route('/process_image', methods=['POST'])
 def process_image():
-    if 'image' not in request.files:
-        return jsonify({"error": "No image uploaded"}), 400
+    img_bytes = None
+
+    if 'image' in request.files:
+        file = request.files['image']
+        img_bytes = file.read()
     
-    file = request.files['image']
-    img_bytes = file.read()
+    elif request.data:
+        img_bytes = request.data
+
+    if img_bytes is None or len(img_bytes) == 0:
+        return jsonify({"error": "No image uploaded"}), 400
+
     np_arr = np.frombuffer(img_bytes, np.uint8)
     full_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
     if full_image is None: 
-        return jsonify({"error": "Invalid image"}), 400
+        return jsonify({"error": "Invalid image decoding"}), 400
+
+    h, w = full_image.shape[:2]
+    if h > w:
+        full_image = cv2.rotate(full_image, cv2.ROTATE_90_CLOCKWISE)
 
     results = []
     
+    img_h, img_w = full_image.shape[:2]
     for slot_name, (x, y, w, h) in SLOT_ROIS.items():
-        img_h, img_w = full_image.shape[:2]
         x, y = max(0, x), max(0, y)
         w, h = min(w, img_w - x), min(h, img_h - y)
-        slot_crop = full_image[y:y+h, x:x+w]
         
+        if w <= 0 or h <= 0:
+            results.append({"slotName": slot_name, "status": "error_bounds"})
+            continue
+
+        slot_crop = full_image[y:y+h, x:x+w]
         status = analyze_slot_with_ai(slot_crop)
         
         results.append({
@@ -100,16 +111,11 @@ def process_image():
         })
 
     try:
-        print(f"Sending update to: {BACKEND_URL}")
-        response = requests.post(BACKEND_URL, json=results)
-        
-        if response.status_code == 200:
+        if BACKEND_URL:
+            requests.post(BACKEND_URL, json=results, timeout=5)
             print("Backend updated successfully!")
-        else:
-            print(f"Backend Error: {response.status_code} - {response.text}")
-            
     except Exception as e:
-        print(f"Connection Failed: {e}")
+        print(f"Backend Connection Failed: {e}")
 
     return jsonify({"results": results})
 
