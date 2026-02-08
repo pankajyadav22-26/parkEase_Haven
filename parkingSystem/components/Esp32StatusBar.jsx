@@ -1,16 +1,17 @@
 import React, { useEffect, useRef } from "react";
 import {
-  View,
   Text,
   StyleSheet,
   ActivityIndicator,
-  Pressable,
+  TouchableOpacity,
   Animated,
+  View
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useEsp32 } from "../contexts/Esp32Context";
-import { MaterialIcons } from "@expo/vector-icons";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { COLORS, SHADOWS } from "../constants/theme";
 
 const Esp32StatusBar = () => {
   const { esp32Online, checking, checkESP32Status } = useEsp32();
@@ -24,76 +25,93 @@ const Esp32StatusBar = () => {
     }).start();
   }, [esp32Online]);
 
-  let statusText = "Checking ESP32...";
-  let colors = ["#bdc3c7", "#95a5a6"];
-  let glowStyle = {};
-
-  if (esp32Online === true) {
-    statusText = "ESP32 Online";
-    colors = ["#00c853", "#2ecc71"];
-    glowStyle = {
-      shadowColor: "#2ecc71",
-      shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: 0.7,
-      shadowRadius: 8,
-      elevation: 10,
-    };
-  } else if (esp32Online === false) {
-    statusText = "ESP32 Offline";
-    colors = ["#e74c3c", "#c0392b"];
-  }
-
   const handleRefresh = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     checkESP32Status();
   };
 
+  let statusText = "Connecting...";
+  let colors = [COLORS.gray400, COLORS.gray500];
+  let iconName = "loading";
+
+  if (checking) {
+    statusText = "Checking...";
+    colors = [COLORS.warning, "#FFB74D"];
+  } else if (esp32Online) {
+    statusText = "System Online";
+    colors = [COLORS.success, "#66BB6A"];
+    iconName = "check-circle-outline";
+  } else {
+    statusText = "System Offline";
+    colors = [COLORS.error, "#EF5350"];
+    iconName = "alert-circle-outline";
+  }
+
   return (
-    <Animated.View style={[{ opacity: fadeAnim }]}>
+    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       <LinearGradient
         colors={colors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
-        style={[styles.container, glowStyle]}
+        style={styles.pill}
       >
-        <Text style={styles.text}>{statusText}</Text>
-
-        {checking ? (
-          <ActivityIndicator size="small" color="#fff" style={styles.icon} />
-        ) : (
-          <Pressable
+        <View style={styles.contentRow}>
+          {checking ? (
+             <ActivityIndicator size="small" color={COLORS.white} style={{ marginRight: 6 }} />
+          ) : (
+             <MaterialCommunityIcons name={iconName} size={25} color={COLORS.white} style={{ marginRight: 10 }} />
+          )}
+          
+          <Text style={styles.text}>{statusText}</Text>
+        </View>
+        {!checking && (
+          <TouchableOpacity
             onPress={handleRefresh}
-            android_ripple={{ color: "#ffffff44", borderless: true }}
+            style={styles.refreshBtn}
+            activeOpacity={0.7}
           >
-            <MaterialIcons name="refresh" size={22} color="#fff" style={styles.icon} />
-          </Pressable>
+            <MaterialCommunityIcons name="refresh" size={21} color={COLORS.white} />
+          </TouchableOpacity>
         )}
       </LinearGradient>
     </Animated.View>
   );
 };
 
+export default Esp32StatusBar;
+
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: 8,
-    paddingHorizontal: 20,
+    alignItems: "center",
+    marginTop: 2,
+    marginBottom: 2,
+    zIndex: 100,
+  },
+  pill: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    elevation: 4,
-    zIndex: 10,
-    borderBottomWidth: 0.5,
-    borderBottomColor: "#ddd",
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    minWidth: 360,
+    minHeight: 10,
+    ...SHADOWS.small,
+  },
+  contentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   text: {
-    color: "#fff",
+    color: COLORS.white,
     fontSize: 16,
-    fontWeight: "700",
-    letterSpacing: 0.5,
+    fontWeight: "bold",
+    letterSpacing: 0.8,
   },
-  icon: {
-    marginLeft: 10,
+  refreshBtn: {
+    marginLeft: 12,
+    paddingLeft: 12,
+    borderLeftWidth: 1,
+    borderLeftColor: "rgba(255,255,255,0.3)",
   },
 });
-
-export default Esp32StatusBar;

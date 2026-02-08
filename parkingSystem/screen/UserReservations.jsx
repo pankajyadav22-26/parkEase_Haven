@@ -5,33 +5,57 @@ import {
   FlatList,
   ActivityIndicator,
   RefreshControl,
-  Button,
+  TouchableOpacity,
+  StatusBar,
+  Image,
+  Alert,
 } from "react-native";
 import React, { useContext, useEffect, useState, useCallback } from "react";
 import { AuthContext } from "../contexts/AuthContext";
 import axios from "axios";
-import { backendUrl } from "@/constants";
-import Icon from "react-native-vector-icons/MaterialCommunityIcons";
-import { Picker } from "@react-native-picker/picker";
+import { backendUrl } from "../constants";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import MapModal from "../components/MapModal";
+import { LinearGradient } from "expo-linear-gradient";
+import { SafeAreaView } from "react-native-safe-area-context";
+import LottieView from "lottie-react-native";
 
-const UserReservations = () => {
+import { COLORS, SIZES, SHADOWS } from "../constants/theme";
+
+const FilterChip = ({ label, active, onPress }) => (
+  <TouchableOpacity
+    style={[styles.filterChip, active && styles.activeFilterChip]}
+    onPress={onPress}
+  >
+    <Text style={[styles.filterText, active && styles.activeFilterText]}>
+      {label}
+    </Text>
+  </TouchableOpacity>
+);
+
+const UserReservations = ({ navigation }) => {
   const { user } = useContext(AuthContext);
   const [reservations, setReservations] = useState([]);
   const [filtered, setFiltered] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState("all");
+
   const [isGateOpening, setIsGateOpening] = useState(false);
+  const [showSuccessAnim, setShowSuccessAnim] = useState(false);
   const [isMapVisible, setIsMapVisible] = useState(false);
   const [userCoords, setUserCoords] = useState(null);
+
+  useEffect(() => {
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
 
   const openMap = async () => {
     setIsMapVisible(true);
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== "granted") {
-      alert("Permission to access location was denied");
+      Alert.alert("Permission Denied", "Allow location access to view map.");
       return;
     }
 
@@ -45,7 +69,7 @@ const UserReservations = () => {
   const fetchReservations = async () => {
     try {
       const response = await axios.get(
-        `${backendUrl}/api/booking/fetch/${user._id}`
+        `${backendUrl}/api/booking/fetch/${user._id}`,
       );
       setReservations(response.data);
     } catch (error) {
@@ -62,9 +86,7 @@ const UserReservations = () => {
   }, []);
 
   useEffect(() => {
-    if (user && user._id) {
-      fetchReservations();
-    }
+    if (user && user._id) fetchReservations();
   }, [user]);
 
   useEffect(() => {
@@ -83,58 +105,33 @@ const UserReservations = () => {
         const end = new Date(res.endTime);
         return start <= now && now <= end;
       });
-    } else if (option === "week") {
-      const startOfWeek = new Date(now);
-      startOfWeek.setDate(now.getDate() - now.getDay());
-      const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setDate(startOfWeek.getDate() + 7);
-
-      filteredData = reservations.filter((res) => {
-        const start = new Date(res.startTime);
-        return start >= startOfWeek && start <= endOfWeek;
-      });
+    } else if (option === "upcoming") {
+      filteredData = reservations.filter(
+        (res) => new Date(res.startTime) > now,
+      );
     } else if (option === "past") {
-      filteredData = reservations.filter((res) => {
-        const end = new Date(res.endTime);
-        return end < now;
-      });
+      filteredData = reservations.filter((res) => new Date(res.endTime) < now);
     }
 
-    filteredData.sort((a, b) => {
-      const now = new Date();
-      const aStart = new Date(a.startTime);
-      const aEnd = new Date(a.endTime);
-      const bStart = new Date(b.startTime);
-      const bEnd = new Date(b.endTime);
-
-      const getStatusValue = (start, end) => {
-        if (end < now) return 2; // Past
-        if (start <= now && now <= end) return 0; // Today
-        if (start > now) return 1; // Upcoming
-        return 3; // Fallback
-      };
-
-      return getStatusValue(aStart, aEnd) - getStatusValue(bStart, bEnd);
-    });
-
+    filteredData.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
     setFiltered(filteredData);
   };
 
   const getStatus = (start, end) => {
     const now = new Date();
     if (end < now) return "Past";
-    if (start <= now && now <= end) return "Today";
+    if (start <= now && now <= end) return "Active";
     if (start > now) return "Upcoming";
     return "";
   };
 
   const handleOpenGate = async (reservationId) => {
     try {
-      setIsGateOpening(true); // disable everything
-
+      setIsGateOpening(true);
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        alert("Location permission denied.");
+        Alert.alert("Permission Denied", "Location is required to open gate.");
+        setIsGateOpening(false);
         return;
       }
 
@@ -150,121 +147,240 @@ const UserReservations = () => {
       const res = await axios.post(`${backendUrl}/api/gate/open`, payload);
 
       if (res.data.success) {
-        alert("Gate opened successfully!");
-        fetchReservations();
+        setIsGateOpening(false);
+        setShowSuccessAnim(true);
+
+        setTimeout(() => {
+          setShowSuccessAnim(false);
+          fetchReservations();
+        }, 3000);
       } else {
-        alert(res.data.message || "Failed to open gate.");
+        Alert.alert("Failed", res.data.message || "Failed to open gate.");
+        setIsGateOpening(false);
       }
     } catch (err) {
       const msg = err.response?.data?.message || "Something went wrong";
-      alert(msg);
-    } finally {
+      Alert.alert("Error", msg);
       setIsGateOpening(false);
     }
   };
 
-  if (loading) {
+  const renderItem = ({ item }) => {
+    const start = new Date(item.startTime);
+    const end = new Date(item.endTime);
+    const status = getStatus(start, end);
+    const now = new Date();
+
+    const isGateButtonEnabled =
+      !item.gateOpened &&
+      (status === "Active" ||
+        (status === "Upcoming" &&
+          start.getTime() - now.getTime() < 15 * 60 * 1000));
+
     return (
-      <ActivityIndicator size="large" style={styles.loader} color="#007bff" />
+      <View style={[styles.ticketCard, status === "Past" && styles.pastTicket]}>
+        <View
+          style={[
+            styles.ticketHeader,
+            {
+              backgroundColor:
+                status === "Active"
+                  ? COLORS.success
+                  : status === "Upcoming"
+                    ? COLORS.primary
+                    : COLORS.gray400,
+            },
+          ]}
+        >
+          <Text style={styles.ticketTitle}>
+            {status === "Active" ? "Active Parking" : status}
+          </Text>
+          <Text style={styles.ticketSlot}>Slot {item.slot}</Text>
+        </View>
+
+        <View style={styles.ticketBody}>
+          <View style={styles.row}>
+            <View style={styles.infoBlock}>
+              <Text style={styles.label}>START</Text>
+              <Text style={styles.value}>
+                {start.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </Text>
+              <Text style={styles.date}>{start.toLocaleDateString()}</Text>
+            </View>
+            <MaterialCommunityIcons
+              name="arrow-right"
+              size={20}
+              color={COLORS.gray400}
+            />
+            <View style={styles.infoBlock}>
+              <Text style={styles.label}>END</Text>
+              <Text style={styles.value}>
+                {end.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </Text>
+              <Text style={styles.date}>{end.toLocaleDateString()}</Text>
+            </View>
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.row}>
+            <View>
+              <Text style={styles.label}>VEHICLE</Text>
+              <Text style={styles.value}>{item.carNumber}</Text>
+            </View>
+            <View>
+              <Text style={styles.label}>TOTAL</Text>
+              <Text style={[styles.value, { color: COLORS.primary }]}>
+                ₹{item.amount}
+              </Text>
+            </View>
+          </View>
+
+          {(status === "Active" || status === "Upcoming") && (
+            <View style={styles.actionRow}>
+              {!item.gateOpened ? (
+                <TouchableOpacity
+                  style={[
+                    styles.actionBtn,
+                    !isGateButtonEnabled && styles.disabledBtn,
+                  ]}
+                  onPress={() => handleOpenGate(item._id)}
+                  disabled={!isGateButtonEnabled}
+                >
+                  <MaterialCommunityIcons
+                    name="gate"
+                    size={20}
+                    color={COLORS.white}
+                  />
+                  <Text style={styles.btnText}>Open Gate</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.openedBadge}>
+                  <MaterialCommunityIcons
+                    name="check-circle"
+                    size={18}
+                    color={COLORS.success}
+                  />
+                  <Text style={styles.openedText}>Gate Opened</Text>
+                </View>
+              )}
+
+              <TouchableOpacity style={styles.mapBtn} onPress={openMap}>
+                <MaterialCommunityIcons
+                  name="map-marker-radius"
+                  size={24}
+                  color={COLORS.primary}
+                />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </View>
     );
-  }
+  };
 
   return (
-    <View
-      style={styles.container}
-      pointerEvents={isGateOpening ? "none" : "auto"}
-    >
-      <Picker
-        selectedValue={filter}
-        onValueChange={(itemValue) => setFilter(itemValue)}
-        style={styles.picker}
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+
+      <LinearGradient
+        colors={[COLORS.primary, COLORS.primaryDark]}
+        style={styles.header}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
       >
-        <Picker.Item label="All" value="all" />
-        <Picker.Item label="Today" value="today" />
-        <Picker.Item label="This Week" value="week" />
-        <Picker.Item label="Past" value="past" />
-      </Picker>
+        <SafeAreaView>
+          <View style={styles.headerContent}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={styles.backBtn}
+            >
+              <MaterialCommunityIcons
+                name="arrow-left"
+                size={24}
+                color={COLORS.white}
+              />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>My Reservations</Text>
+            <View style={{ width: 40 }} />
+          </View>
+        </SafeAreaView>
+      </LinearGradient>
 
-      {filtered.length === 0 ? (
-        <Text style={styles.emptyText}>No reservations found.</Text>
-      ) : (
-        <FlatList
-          showsHorizontalScrollIndicator={false}
-          showsVerticalScrollIndicator={false}
-          data={filtered}
-          keyExtractor={(item) => item._id}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-          contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => {
-            const start = new Date(item.startTime);
-            const end = new Date(item.endTime);
-            const status = getStatus(start, end);
-            const now = new Date();
+      <View style={styles.filterContainer}>
+        <View style={styles.chipRow}>
+          {["all", "today", "upcoming", "past"].map((f) => (
+            <FilterChip
+              key={f}
+              label={f.charAt(0).toUpperCase() + f.slice(1)}
+              active={filter === f}
+              onPress={() => setFilter(f)}
+            />
+          ))}
+        </View>
+      </View>
 
-            const isGateButtonDisabled =
-              item.gateOpened ||
-              (status === "Upcoming" &&
-                start.getTime() - now.getTime() > 5 * 60 * 1000);
+      <FlatList
+        data={filtered}
+        keyExtractor={(item) => item._id}
+        renderItem={renderItem}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={COLORS.primary}
+          />
+        }
+        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={
+          loading ? (
+            <ActivityIndicator
+              size="large"
+              color={COLORS.primary}
+              style={{ marginTop: 50 }}
+            />
+          ) : (
+            <Text style={styles.emptyText}>No tickets found.</Text>
+          )
+        }
+      />
 
-            return (
-              <View style={styles.card}>
-                <Text style={styles.statusBadge(status)}>{status}</Text>
-                <Text style={styles.title}>{item.name}</Text>
-                <Text style={styles.detail}>
-                  <Icon name="car" size={16} color="#333" /> Car:{" "}
-                  <Text style={styles.value}>{item.carNumber}</Text>
-                </Text>
-                <Text style={styles.detail}>
-                  <Icon name="parking" size={16} color="#333" /> Slot:{" "}
-                  <Text style={styles.value}>{item.slot}</Text>
-                </Text>
-                <Text style={styles.detail}>
-                  <Icon name="currency-inr" size={16} color="#333" /> Amount:{" "}
-                  <Text style={styles.value}>₹ {item.amount}</Text>
-                </Text>
-                <Text style={styles.detail}>
-                  <Icon name="clock-start" size={16} color="#333" /> Start:{" "}
-                  <Text style={styles.value}>{start.toLocaleString()}</Text>
-                </Text>
-                <Text style={styles.detail}>
-                  <Icon name="clock-end" size={16} color="#333" /> End:{" "}
-                  <Text style={styles.value}>{end.toLocaleString()}</Text>
-                </Text>
-
-                {(status === "Today" || status === "Upcoming") && (
-                  <View style={{ marginTop: 10 }}>
-                    <Button
-                      title={
-                        item.gateOpened ? "Gate Already Opened" : "Open Gate"
-                      }
-                      onPress={() => handleOpenGate(item._id)}
-                      disabled={isGateButtonDisabled}
-                      color={item.gateOpened ? "#6c757d" : "#007bff"}
-                    />
-                    {!item.gateOpened && (
-                      <View style={{ marginTop: 8 }}>
-                        <Button
-                          title="View Map"
-                          onPress={openMap}
-                          color="#17a2b8"
-                        />
-                      </View>
-                    )}
-                  </View>
-                )}
-              </View>
-            );
-          }}
-        />
-      )}
-      {isGateOpening && (
+      {(isGateOpening || showSuccessAnim) && (
         <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#ffffff" />
-          <Text style={styles.loadingText}>Opening gate...</Text>
+          <View style={styles.loadingBox}>
+            {showSuccessAnim ? (
+              <>
+                <LottieView
+                  source={require("../assets/gateAnimation.json")}
+                  autoPlay
+                  loop={false}
+                  style={{ width: 150, height: 150 }}
+                />
+                <Text
+                  style={[
+                    styles.loadingText,
+                    { color: COLORS.success, fontSize: 18, marginTop: 0 },
+                  ]}
+                >
+                  Gate Opened!
+                </Text>
+              </>
+            ) : (
+              <>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+                <Text style={styles.loadingText}>Connecting to Gate...</Text>
+              </>
+            )}
+          </View>
         </View>
       )}
+
       <MapModal
         visible={isMapVisible}
         onClose={() => setIsMapVisible(false)}
@@ -279,87 +395,198 @@ export default UserReservations;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f0f4f8",
-    paddingHorizontal: 16,
-    paddingTop: 16,
+    backgroundColor: COLORS.gray100,
   },
-  loader: {
+  header: {
+    paddingBottom: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    ...SHADOWS.medium,
+  },
+  headerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 10,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: COLORS.white,
+  },
+  backBtn: {
+    padding: 8,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderRadius: 12,
+  },
+  filterContainer: {
+    marginTop: 15,
+    paddingHorizontal: 15,
+    marginBottom: 10,
+  },
+  chipRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  filterChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+  },
+  activeFilterChip: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  filterText: {
+    fontSize: 12,
+    color: COLORS.gray600,
+    fontWeight: "600",
+  },
+  activeFilterText: {
+    color: COLORS.white,
+  },
+  listContent: {
+    padding: 20,
+    paddingBottom: 50,
+  },
+  ticketCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    marginBottom: 20,
+    overflow: "hidden",
+    ...SHADOWS.small,
+  },
+  pastTicket: {
+    opacity: 0.7,
+  },
+  ticketHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: 12,
+    paddingHorizontal: 20,
+  },
+  ticketTitle: {
+    color: COLORS.white,
+    fontWeight: "bold",
+    fontSize: 14,
+    textTransform: "uppercase",
+  },
+  ticketSlot: {
+    color: COLORS.white,
+    fontWeight: "bold",
+  },
+  ticketBody: {
+    padding: 20,
+  },
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  infoBlock: {
+    alignItems: "flex-start",
+  },
+  label: {
+    fontSize: 10,
+    color: COLORS.gray500,
+    marginBottom: 4,
+    fontWeight: "bold",
+  },
+  value: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  date: {
+    fontSize: 12,
+    color: COLORS.gray500,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.gray200,
+    marginVertical: 15,
+    borderStyle: "dashed",
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+  },
+  actionRow: {
+    marginTop: 20,
+    flexDirection: "row",
+    gap: 15,
+  },
+  actionBtn: {
     flex: 1,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 12,
+    borderRadius: 10,
+    flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
+    gap: 8,
+  },
+  disabledBtn: {
+    backgroundColor: COLORS.gray400,
+  },
+  btnText: {
+    color: COLORS.white,
+    fontWeight: "bold",
+    fontSize: 14,
+  },
+  mapBtn: {
+    width: 48,
+    height: 48,
+    backgroundColor: COLORS.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 10,
+  },
+  openedBadge: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    backgroundColor: "#E8F5E9",
+    borderRadius: 10,
+    paddingVertical: 12,
+  },
+  openedText: {
+    color: COLORS.success,
+    fontWeight: "bold",
   },
   emptyText: {
     textAlign: "center",
     marginTop: 50,
-    fontSize: 18,
-    color: "#888",
+    color: COLORS.gray500,
   },
-  listContent: {
-    paddingBottom: 16,
-  },
-  card: {
-    backgroundColor: "#ffffff",
-    padding: 18,
-    marginBottom: 12,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 10,
-    color: "#333",
-  },
-  detail: {
-    fontSize: 14,
-    color: "#555",
-    marginBottom: 4,
-  },
-  value: {
-    color: "#000",
-    fontWeight: "500",
-  },
-  picker: {
-    marginBottom: 16,
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    elevation: 2,
-  },
-  statusBadge: (status) => ({
-    alignSelf: "flex-start",
-    backgroundColor:
-      status === "Upcoming"
-        ? "#007bff"
-        : status === "Today"
-        ? "#28a745"
-        : "#6c757d",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "bold",
-    overflow: "hidden",
-    marginBottom: 8,
-  }),
   loadingOverlay: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
     alignItems: "center",
-    zIndex: 10,
+    zIndex: 20,
+  },
+  loadingBox: {
+    backgroundColor: COLORS.white,
+    padding: 20,
+    borderRadius: 16,
+    alignItems: "center",
+    ...SHADOWS.medium,
+    minWidth: 150,
+    minHeight: 150,
+    justifyContent: "center",
   },
   loadingText: {
-    color: "#fff",
     marginTop: 10,
-    fontSize: 16,
+    color: COLORS.gray700,
+    fontWeight: "600",
   },
 });

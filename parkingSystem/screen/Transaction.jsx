@@ -4,293 +4,295 @@ import {
   View,
   FlatList,
   ActivityIndicator,
-  Button,
+  TouchableOpacity,
   Platform,
   LayoutAnimation,
   UIManager,
-  TouchableOpacity,
+  StatusBar,
+  ScrollView,
+  Modal
 } from "react-native";
 import React, { useEffect, useState, useContext } from "react";
 import axios from "axios";
 import { AuthContext } from "../contexts/AuthContext";
-import { backendUrl } from "@/constants";
+import { backendUrl } from "../constants";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { Picker } from "@react-native-picker/picker";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-if (
-  Platform.OS === "android" &&
-  UIManager.setLayoutAnimationEnabledExperimental
-) {
+import { COLORS, SIZES, SHADOWS } from "../constants/theme";
+
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const Transaction = () => {
+const FilterChip = ({ label, active, onPress }) => (
+  <TouchableOpacity
+    style={[styles.filterChip, active && styles.activeFilterChip]}
+    onPress={onPress}
+  >
+    <Text style={[styles.filterText, active && styles.activeFilterText]}>{label}</Text>
+  </TouchableOpacity>
+);
+
+const Transaction = ({ navigation }) => {
   const { user } = useContext(AuthContext);
   const [transactions, setTransactions] = useState([]);
+  const [filteredTransactions, setFilteredTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [dateFilterMode, setDateFilterMode] = useState("exact");
-  const [dateFilter, setDateFilter] = useState("");
-  const [showPicker, setShowPicker] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState("");
-  const [selectedYear, setSelectedYear] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [dateMode, setDateMode] = useState("exact"); // 'exact', 'month', 'year'
+  
+  const [selectedDate, setSelectedDate] = useState(null); // For 'exact'
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth()); // 0-11
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
-    const fetchTransactions = async () => {
-      try {
-        const res = await axios.get(
-          `${backendUrl}/api/transaction/${user._id}`
-        );
-        let data = res.data;
-    
-        if (statusFilter !== "all") {
-          data = data.filter(
-            (txn) => txn.status.toLowerCase() === statusFilter.toLowerCase()
-          );
-        }
-    
-        if (dateFilter) {
-          const selectedDate = new Date(dateFilter);
-          data = data.filter((txn) => {
-            const txnDate = new Date(txn.timestamp);
-            if (dateFilterMode === "exact") {
-              return txnDate.toDateString() === selectedDate.toDateString();
-            }
-            if (dateFilterMode === "month") {
-              return (
-                txnDate.getMonth() === selectedDate.getMonth() &&
-                txnDate.getFullYear() === selectedDate.getFullYear()
-              );
-            }
-            if (dateFilterMode === "year") {
-              return txnDate.getFullYear() === selectedDate.getFullYear();
-            }
-            return true;
-          });
-        }
-    
-        setTransactions(data);
-      } catch (err) {
-        if (err.response && err.response.status === 404) {
-          // Expected: No transactions
-          setTransactions([]); // Still update the state
-        } else {
-          console.error("Unexpected error fetching transactions:", err);
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
 
-    if (user) {
-      fetchTransactions();
+  useEffect(() => {
+    fetchTransactions();
+  }, [user]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [transactions, statusFilter, dateMode, selectedDate, selectedMonth, selectedYear]);
+
+  const fetchTransactions = async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const res = await axios.get(`${backendUrl}/api/transaction/${user._id}`);
+      const sortedData = res.data.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      setTransactions(sortedData);
+    } catch (err) {
+      console.log("Error fetching transactions", err);
+      setTransactions([]);
+    } finally {
+      setLoading(false);
     }
-  }, [user, statusFilter, dateFilter, dateFilterMode]);
+  };
+
+  const applyFilters = () => {
+    let data = [...transactions];
+    if (statusFilter !== "all") {
+      data = data.filter(txn => txn.status.toLowerCase() === statusFilter);
+    }
+
+    if (dateMode === 'exact' && selectedDate) {
+      data = data.filter(txn => {
+         const txnDate = new Date(txn.timestamp);
+         return txnDate.toDateString() === selectedDate.toDateString();
+      });
+    } else if (dateMode === 'month') {
+       data = data.filter(txn => {
+         const txnDate = new Date(txn.timestamp);
+         return txnDate.getMonth() === selectedMonth && txnDate.getFullYear() === selectedYear;
+       });
+    } else if (dateMode === 'year') {
+       data = data.filter(txn => {
+         const txnDate = new Date(txn.timestamp);
+         return txnDate.getFullYear() === selectedYear;
+       });
+    }
+
+    setFilteredTransactions(data);
+  };
+
+  const toggleFilters = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setShowFilters(!showFilters);
+  };
 
   const renderItem = ({ item }) => (
-    <View style={styles.transactionCard}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>Transaction</Text>
-        <Text
-          style={[
-            styles.status,
-            { color: item.status === "success" ? "#4caf50" : "#f44336" },
-          ]}
-        >
-          ● {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-        </Text>
+    <View style={styles.card}>
+      <View style={styles.cardLeft}>
+        <View style={[
+            styles.iconBox, 
+            { backgroundColor: item.status === 'success' ? '#E8F5E9' : '#FFEBEE' }
+        ]}>
+            <MaterialCommunityIcons 
+                name={item.status === 'success' ? "check-circle" : "alert-circle"} 
+                size={24} 
+                color={item.status === 'success' ? COLORS.success : COLORS.error} 
+            />
+        </View>
+        <View>
+            <Text style={styles.cardTitle}>Parking Reservation</Text>
+            <Text style={styles.cardDate}>{new Date(item.timestamp).toLocaleString()}</Text>
+        </View>
       </View>
-
-      <View style={styles.cardBody}>
-        <Text style={styles.label}>Transaction ID</Text>
-        <Text style={styles.value}>{item.transactionId}</Text>
-
-        <Text style={styles.label}>Amount</Text>
-        <Text style={styles.value}>₹{item.amount}</Text>
-
-        <Text style={styles.label}>Time</Text>
-        <Text style={styles.value}>
-          {new Date(item.timestamp).toLocaleString()}
+      
+      <View style={styles.cardRight}>
+        <Text style={styles.amount}>- ₹{item.amount}</Text>
+        <Text style={[
+            styles.statusText, 
+            { color: item.status === 'success' ? COLORS.success : COLORS.error }
+        ]}>
+            {item.status}
         </Text>
       </View>
     </View>
   );
 
-  const renderFilters = () => (
-    <>
-      <TouchableOpacity
-        onPress={() => {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-          setShowFilters((prev) => !prev);
-        }}
-        style={styles.toggleButton}
-      >
-        <Text style={styles.toggleButtonText}>
-          {showFilters ? "Hide Filters ▲" : "Show Filters ▼"}
-        </Text>
-      </TouchableOpacity>
-
-      {showFilters && (
-        <View style={styles.filterCard}>
-          <Text style={styles.label}>Status Filter:</Text>
-          <Picker
-            selectedValue={statusFilter}
-            onValueChange={(value) => setStatusFilter(value)}
-            style={styles.picker}
-          >
-            <Picker.Item label="All" value="all" />
-            <Picker.Item label="Success" value="success" />
-            <Picker.Item label="Failed" value="failed" />
-          </Picker>
-
-          <Text style={styles.label}>Date Filter Type:</Text>
-          <Picker
-            selectedValue={dateFilterMode}
-            onValueChange={(val) => {
-              setDateFilterMode(val);
-              setDateFilter("");
-              setSelectedMonth("");
-              setSelectedYear("");
-            }}
-            style={styles.picker}
-          >
-            <Picker.Item label="Exact Date" value="exact" />
-            <Picker.Item label="Month" value="month" />
-            <Picker.Item label="Year" value="year" />
-          </Picker>
-
-          {dateFilterMode === "exact" && (
-            <View style={{ marginBottom: 10 }}>
-              <Button
-                title={
-                  dateFilter
-                    ? `Selected: ${new Date(dateFilter).toDateString()}`
-                    : "Select Date"
-                }
-                onPress={() => setShowPicker(true)}
-                color="#4caf50"
-              />
-              {showPicker && (
-                <DateTimePicker
-                  value={dateFilter ? new Date(dateFilter) : new Date()}
-                  mode="date"
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  onChange={(event, selectedDate) => {
-                    setShowPicker(false);
-                    if (selectedDate) {
-                      setDateFilter(selectedDate.toISOString());
-                    }
-                  }}
-                />
-              )}
-            </View>
-          )}
-
-          {dateFilterMode === "month" && (
-            <>
-              <Text style={styles.label}>Select Month:</Text>
-              <Picker
-                selectedValue={selectedMonth}
-                onValueChange={(val) => setSelectedMonth(val)}
-                style={styles.picker}
-              >
-                <Picker.Item label="Select Month" value="" />
-                {Array.from({ length: 12 }, (_, i) => (
-                  <Picker.Item
-                    key={i}
-                    label={new Date(0, i).toLocaleString("default", {
-                      month: "long",
-                    })}
-                    value={i}
-                  />
-                ))}
-              </Picker>
-
-              <Text style={styles.label}>Select Year:</Text>
-              <Picker
-                selectedValue={selectedYear}
-                onValueChange={(val) => setSelectedYear(val)}
-                style={styles.picker}
-              >
-                <Picker.Item label="Select Year" value="" />
-                {Array.from({ length: 20 }, (_, i) => {
-                  const year = new Date().getFullYear() - i;
-                  return (
-                    <Picker.Item key={year} label={`${year}`} value={year} />
-                  );
-                })}
-              </Picker>
-
-              <Button
-                title="Apply"
-                onPress={() => {
-                  if (selectedMonth !== "" && selectedYear !== "") {
-                    const date = new Date(selectedYear, selectedMonth, 1);
-                    setDateFilter(date.toISOString());
-                  }
-                }}
-                color="#4caf50"
-              />
-            </>
-          )}
-
-          {dateFilterMode === "year" && (
-            <>
-              <Text style={styles.label}>Select Year:</Text>
-              <Picker
-                selectedValue={selectedYear}
-                onValueChange={(val) => {
-                  setSelectedYear(val);
-                  if (val !== "") {
-                    const date = new Date(val, 0, 1);
-                    setDateFilter(date.toISOString());
-                  }
-                }}
-                style={styles.picker}
-              >
-                <Picker.Item label="Select Year" value="" />
-                {Array.from({ length: 20 }, (_, i) => {
-                  const year = new Date().getFullYear() - i;
-                  return (
-                    <Picker.Item key={year} label={`${year}`} value={year} />
-                  );
-                })}
-              </Picker>
-            </>
-          )}
-
-          {dateFilter && (
-            <View style={{ marginTop: 10 }}>
-              <Button
-                title="Clear Date Filter"
-                onPress={() => setDateFilter("")}
-                color="#f44336"
-              />
-            </View>
-          )}
-        </View>
-      )}
-    </>
-  );
+  const years = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
   return (
-    <FlatList
-      data={transactions}
-      keyExtractor={(item) => item._id}
-      renderItem={renderItem}
-      contentContainerStyle={styles.container}
-      ListHeaderComponent={renderFilters}
-      ListEmptyComponent={
-        loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#4caf50" />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+      
+      <LinearGradient
+        colors={[COLORS.primary, COLORS.primaryDark]}
+        style={styles.header}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <SafeAreaView>
+          <View style={styles.headerContent}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+               <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.white} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Transactions</Text>
+            <TouchableOpacity onPress={toggleFilters} style={styles.filterBtn}>
+               <MaterialCommunityIcons name={showFilters ? "filter-off" : "filter-variant"} size={24} color={COLORS.white} />
+            </TouchableOpacity>
           </View>
-        ) : (
-          <Text style={styles.noTransactions}>No transactions found.</Text>
-        )
-      }
-    />
+        </SafeAreaView>
+      </LinearGradient>
+
+      {showFilters && (
+        <View style={styles.filterSection}>
+            <Text style={styles.filterLabel}>Status</Text>
+            <View style={styles.chipRow}>
+                {['all', 'success', 'failed'].map((status) => (
+                    <FilterChip 
+                        key={status} 
+                        label={status.charAt(0).toUpperCase() + status.slice(1)} 
+                        active={statusFilter === status}
+                        onPress={() => setStatusFilter(status)}
+                    />
+                ))}
+            </View>
+
+            <Text style={styles.filterLabel}>Filter By</Text>
+            <View style={styles.chipRow}>
+                {[
+                  { id: 'exact', label: 'Exact Date' },
+                  { id: 'month', label: 'Month' },
+                  { id: 'year', label: 'Year' }
+                ].map((mode) => (
+                    <FilterChip 
+                        key={mode.id} 
+                        label={mode.label} 
+                        active={dateMode === mode.id}
+                        onPress={() => {
+                          setDateMode(mode.id);
+                          if(mode.id === 'exact' && !selectedDate) setSelectedDate(new Date());
+                        }}
+                    />
+                ))}
+            </View>
+
+            <View style={styles.selectorContainer}>
+                {dateMode === 'exact' && (
+                    <TouchableOpacity 
+                        style={styles.dateBtn}
+                        onPress={() => setShowDatePicker(true)}
+                    >
+                        <MaterialCommunityIcons name="calendar" size={20} color={COLORS.gray600} />
+                        <Text style={styles.dateText}>
+                            {selectedDate ? selectedDate.toDateString() : "Select Date"}
+                        </Text>
+                        {selectedDate && (
+                           <TouchableOpacity onPress={() => setSelectedDate(null)}>
+                              <MaterialCommunityIcons name="close-circle" size={20} color={COLORS.gray400} />
+                           </TouchableOpacity>
+                        )}
+                    </TouchableOpacity>
+                )}
+
+                {dateMode === 'month' && (
+                   <View>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.scrollSelect}>
+                          {years.map(year => (
+                              <TouchableOpacity 
+                                key={year} 
+                                style={[styles.miniChip, selectedYear === year && styles.activeMiniChip]}
+                                onPress={() => setSelectedYear(year)}
+                              >
+                                  <Text style={[styles.miniChipText, selectedYear === year && styles.activeMiniChipText]}>{year}</Text>
+                              </TouchableOpacity>
+                          ))}
+                      </ScrollView>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.scrollSelect}>
+                          {months.map((m, index) => (
+                              <TouchableOpacity 
+                                key={m} 
+                                style={[styles.miniChip, selectedMonth === index && styles.activeMiniChip]}
+                                onPress={() => setSelectedMonth(index)}
+                              >
+                                  <Text style={[styles.miniChipText, selectedMonth === index && styles.activeMiniChipText]}>{m}</Text>
+                              </TouchableOpacity>
+                          ))}
+                      </ScrollView>
+                   </View>
+                )}
+
+                {dateMode === 'year' && (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.scrollSelect}>
+                        {years.map(year => (
+                            <TouchableOpacity 
+                              key={year} 
+                              style={[styles.miniChip, selectedYear === year && styles.activeMiniChip]}
+                              onPress={() => setSelectedYear(year)}
+                            >
+                                <Text style={[styles.miniChipText, selectedYear === year && styles.activeMiniChipText]}>{year}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                )}
+            </View>
+        </View>
+      )}
+
+      <FlatList
+        data={filteredTransactions}
+        keyExtractor={(item) => item._id}
+        renderItem={renderItem}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+            loading ? (
+                <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 50 }} />
+            ) : (
+                <View style={styles.emptyState}>
+                    <MaterialCommunityIcons name="receipt" size={80} color={COLORS.gray300} />
+                    <Text style={styles.emptyText}>No transactions found</Text>
+                </View>
+            )
+        }
+      />
+
+      {showDatePicker && (
+        <DateTimePicker
+          value={selectedDate || new Date()}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={(event, date) => {
+            setShowDatePicker(false);
+            if (date) setSelectedDate(date);
+          }}
+          maximumDate={new Date()}
+        />
+      )}
+    </View>
   );
 };
 
@@ -298,116 +300,182 @@ export default Transaction;
 
 const styles = StyleSheet.create({
   container: {
-    flexGrow: 1,
-    padding: 20,
-    backgroundColor: "#fff",
-  },
-  toggleButton: {
-    backgroundColor: "#4caf50",
-    padding: 10,
-    borderRadius: 6,
-    marginBottom: 10,
-    alignItems: "center",
-  },
-  toggleButtonText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 16,
-  },
-  filterCard: {
-    backgroundColor: "#fff",
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 20,
-    elevation: 1,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: "500",
-    marginBottom: 5,
-    color: "#444",
-  },
-  picker: {
-    backgroundColor: "#f9f9f9",
-    borderRadius: 6,
-    marginBottom: 15,
-    elevation: 1,
-  },
-  loadingContainer: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    backgroundColor: COLORS.gray100,
   },
-  transactionCard: {
+  header: {
+    paddingBottom: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    ...SHADOWS.medium,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 10,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: COLORS.white,
+  },
+  backBtn: {
+    padding: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 12,
+  },
+  filterBtn: {
+    padding: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 12,
+  },
+  filterSection: {
+    backgroundColor: COLORS.white,
     padding: 15,
-    marginVertical: 8,
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    borderLeftWidth: 5,
-    borderLeftColor: "#4caf50",
-    elevation: 3,
+    marginHorizontal: 15,
+    marginTop: -15,
+    borderRadius: 16,
+    ...SHADOWS.small,
+    marginBottom: 10,
   },
-  id: {
+  filterLabel: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: COLORS.gray500,
+    marginBottom: 8,
+    marginTop: 10,
+    textTransform: 'uppercase',
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  filterChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: COLORS.gray100,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+  },
+  activeFilterChip: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  filterText: {
+    fontSize: 12,
+    color: COLORS.gray600,
+    fontWeight: '600',
+  },
+  activeFilterText: {
+    color: COLORS.white,
+  },
+  selectorContainer: {
+    marginTop: 15,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray100,
+  },
+  dateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.gray50,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+    justifyContent: 'space-between'
+  },
+  dateText: {
+    marginLeft: 10,
+    color: COLORS.gray700,
     fontSize: 14,
-    fontWeight: "bold",
+    flex: 1,
+  },
+  scrollSelect: {
+    marginBottom: 10,
+  },
+  miniChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    backgroundColor: COLORS.gray50,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+  },
+  activeMiniChip: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  miniChipText: {
+    fontSize: 12,
+    color: COLORS.gray600,
+  },
+  activeMiniChipText: {
+    color: COLORS.white,
+    fontWeight: 'bold',
+  },
+  listContent: {
+    padding: 20,
+    paddingTop: 10,
+  },
+  card: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    padding: 15,
+    borderRadius: 16,
+    marginBottom: 12,
+    ...SHADOWS.small,
+  },
+  cardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  iconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cardTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: COLORS.text,
+  },
+  cardDate: {
+    fontSize: 12,
+    color: COLORS.gray500,
+    marginTop: 2,
+  },
+  cardRight: {
+    alignItems: 'flex-end',
   },
   amount: {
     fontSize: 16,
-    marginTop: 5,
+    fontWeight: 'bold',
+    color: COLORS.text,
   },
-  status: {
-    fontSize: 14,
-    marginTop: 5,
-    color: "#333",
+  statusText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    marginTop: 4,
   },
-  time: {
-    fontSize: 12,
-    marginTop: 5,
-    color: "#666",
+  emptyState: {
+    alignItems: 'center',
+    marginTop: 50,
   },
-  noTransactions: {
-    textAlign: "center",
-    marginTop: 20,
+  emptyText: {
+    color: COLORS.gray400,
+    marginTop: 10,
     fontSize: 16,
-    color: "#777",
-  },
-  transactionCard: {
-    padding: 15,
-    marginVertical: 10,
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 10,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#333",
-  },
-  status: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  cardBody: {
-    gap: 5,
-  },
-  label: {
-    fontSize: 13,
-    color: "#888",
-    marginTop: 6,
-  },
-  value: {
-    fontSize: 15,
-    color: "#444",
   },
 });

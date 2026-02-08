@@ -8,56 +8,62 @@ import {
   Alert,
   ActivityIndicator,
 } from "react-native";
-import React, { useCallback } from "react";
+import React, { useContext } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import {
-  AntDesign,
-  MaterialCommunityIcons,
-} from "@expo/vector-icons";
-import { COLORS, SIZES, backendUrl } from "../constants";
-import { AuthContext } from "../contexts/AuthContext";
-import axios from "axios";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import axios from "axios";
+
+import { COLORS, SHADOWS } from "../constants/theme";
+import { backendUrl } from "../constants";
+import { AuthContext } from "../contexts/AuthContext";
+
+const ProfileItem = ({ icon, title, subtitle, onPress, danger }) => (
+  <TouchableOpacity 
+    style={styles.itemContainer} 
+    onPress={onPress}
+    activeOpacity={0.7}
+  >
+    <View style={[styles.iconBox, danger && styles.dangerIconBox]}>
+      <MaterialCommunityIcons 
+        name={icon} 
+        size={24} 
+        color={danger ? COLORS.error : COLORS.primary} 
+      />
+    </View>
+    <View style={styles.itemContent}>
+      <Text style={[styles.itemTitle, danger && styles.dangerText]}>{title}</Text>
+      {subtitle && <Text style={styles.itemSubtitle}>{subtitle}</Text>}
+    </View>
+    <MaterialCommunityIcons name="chevron-right" size={24} color={COLORS.gray400} />
+  </TouchableOpacity>
+);
 
 const Profile = ({ navigation }) => {
-  const { user, logout, loading } = React.useContext(AuthContext);
-
-  const clearCache = () => {
-    Alert.alert("Clear Cache", "Are you sure you want to clear the cache", [
-      { text: "Cancel" },
-      {
-        text: "Continue",
-        onPress: () => console.log("Cache cleared (not implemented yet)"),
-      },
-    ]);
-  };
+  const { user, logout, loading } = useContext(AuthContext);
 
   const deleteAccount = async () => {
     Alert.alert(
       "Delete Account",
-      "Are you sure you want to delete your account?",
+      "This action cannot be undone. Are you sure?",
       [
-        { text: "Cancel" },
+        { text: "Cancel", style: "cancel" },
         {
-          text: "Continue",
+          text: "Delete",
+          style: "destructive",
           onPress: async () => {
             try {
               const id = await AsyncStorage.getItem("id");
               const userId = JSON.parse(id);
-              const response = await axios.delete(
-                `${backendUrl}/api/useroperations/delete/${userId}`
-              );
-
-              if (response.status === 200) {
+              if (userId) {
+                await axios.delete(`${backendUrl}/api/useroperations/delete/${userId}`);
                 await AsyncStorage.multiRemove([`user${userId}`, "id"]);
                 logout();
               }
             } catch (error) {
               console.error("Error deleting account:", error);
-              Alert.alert(
-                "Error",
-                "There was an issue deleting your account. Please try again later."
-              );
+              Alert.alert("Error", "Could not delete account.");
             }
           },
         },
@@ -67,95 +73,108 @@ const Profile = ({ navigation }) => {
 
   if (loading) {
     return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" />
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={{ width: "100%" }}>
-        <Image
-          source={require("../assets/images/space.jpg")}
-          style={styles.cover}
-        />
-      </View>
-      <View style={styles.profileContainer}>
-        <Image
-          source={require("../assets/images/profile.jpeg")}
-          style={styles.profile}
-        />
-        <Text style={styles.name}>
-          {user ? user.username : "Please login into your account"}
-        </Text>
-
-        {user ? (
-          <View style={styles.loginBtn}>
-            <Text style={styles.menuTxt}>{user.email}</Text>
-          </View>
-        ) : (
-          <TouchableOpacity onPress={() => navigation.navigate("Login")}>
-            <View style={styles.loginBtn}>
-              <Text style={styles.menuTxt}>Log In</Text>
+    <View style={styles.container}>
+       <LinearGradient
+        colors={[COLORS.primary, COLORS.primaryDark]}
+        style={styles.header}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <SafeAreaView>
+          <View style={styles.profileSection}>
+            <View style={styles.imageContainer}>
+              <Image
+                source={require("../assets/images/profile.jpeg")}
+                style={styles.profileImage}
+              />
+              <View style={styles.editBadge}>
+                 <MaterialCommunityIcons name="pencil" size={14} color={COLORS.white} />
+              </View>
             </View>
-          </TouchableOpacity>
-        )}
+            <Text style={styles.name}>
+              {user?.username || "Guest User"}
+            </Text>
+            <Text style={styles.email}>
+              {user?.email || "Sign in to view profile"}
+            </Text>
+          </View>
+        </SafeAreaView>
+      </LinearGradient>
 
-        <ScrollView>
-          {user && (
-            <View style={styles.menuWrapper}>
-              <TouchableOpacity onPress={() => navigation.navigate("reserve")}>
-                <View style={styles.menuItem(0.2)}>
-                  <MaterialCommunityIcons
-                    name="parking"
-                    size={24}
-                    color={COLORS.primary}
-                  />
-                  <Text style={styles.menuTxt}>Your Reservations</Text>
-                </View>
-              </TouchableOpacity>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {!user ? (
+           <View style={styles.section}>
+             <ProfileItem 
+                icon="login" 
+                title="Log In / Sign Up" 
+                subtitle="Access your reservations"
+                onPress={() => navigation.navigate("Login")} 
+             />
+           </View>
+        ) : (
+          <>
+            <Text style={styles.sectionTitle}>My Activity</Text>
+            <View style={styles.section}>
+              <ProfileItem 
+                icon="ticket-confirmation-outline" 
+                title="My Reservations" 
+                subtitle="View upcoming and past spots"
+                onPress={() => navigation.navigate("reserve")} 
+              />
+              <View style={styles.divider} />
+              <ProfileItem 
+                icon="wallet-outline" 
+                title="Transactions" 
+                subtitle="Payment history"
+                onPress={() => navigation.navigate("transactions")} 
+              />
+            </View>
 
-              <TouchableOpacity onPress={() => navigation.navigate("transactions")}>
-                <View style={styles.menuItem(0.2)}>
-                  <MaterialCommunityIcons
-                    name="bank-transfer"
-                    size={24}
-                    color={COLORS.primary}
-                  />
-                  <Text style={styles.menuTxt}>Transactions</Text>
-                </View>
-              </TouchableOpacity>
+            <Text style={styles.sectionTitle}>Account Settings</Text>
+            <View style={styles.section}>
+              <ProfileItem 
+                icon="bell-outline" 
+                title="Notifications" 
+                onPress={() => {}} 
+              />
+              <View style={styles.divider} />
+              <ProfileItem 
+                icon="shield-check-outline" 
+                title="Privacy & Security" 
+                onPress={() => {}} 
+              />
+            </View>
 
-              <TouchableOpacity onPress={deleteAccount}>
-                <View style={styles.menuItem(0.2)}>
-                  <AntDesign
-                    name="deleteuser"
-                    size={24}
-                    color={COLORS.primary}
-                  />
-                  <Text style={styles.menuTxt}>Delete Account</Text>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity
+            <View style={styles.section}>
+              <ProfileItem 
+                icon="logout" 
+                title="Log Out" 
                 onPress={() => {
-                  Alert.alert("Logout", "Are you sure you want to logout?", [
+                  Alert.alert("Logout", "Are you sure?", [
                     { text: "Cancel" },
                     { text: "Logout", onPress: logout },
                   ]);
-                }}
-              >
-                <View style={styles.menuItem(0.2)}>
-                  <AntDesign name="logout" size={24} color={COLORS.primary} />
-                  <Text style={styles.menuTxt}>Log Out</Text>
-                </View>
-              </TouchableOpacity>
+                }} 
+              />
+              <View style={styles.divider} />
+              <ProfileItem 
+                icon="delete-outline" 
+                title="Delete Account" 
+                danger
+                onPress={deleteAccount} 
+              />
             </View>
-          )}
-        </ScrollView>
-      </View>
-    </SafeAreaView>
+          </>
+        )}
+      </ScrollView>
+    </View>
   );
 };
 
@@ -164,65 +183,114 @@ export default Profile;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.lightWhite,
-    marginTop : -36,
+    backgroundColor: COLORS.gray100,
   },
-  loading: {
+  center: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
-  cover: {
-    height: 200,
-    width: "100%",
-    resizeMode: "cover",
+  header: {
+    paddingBottom: 30,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    ...SHADOWS.medium,
   },
-  profileContainer: {
-    flex: 1,
+  profileSection: {
     alignItems: "center",
-    marginBottom: 25,
+    marginTop: 20,
   },
-  profile: {
-    height: 155,
-    width: 155,
-    borderRadius: 999,
-    borderColor: COLORS.primary,
+  imageContainer: {
+    position: "relative",
+    marginBottom: 15,
+  },
+  profileImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 3,
+    borderColor: COLORS.white,
+  },
+  editBadge: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    backgroundColor: COLORS.secondary,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    justifyContent: "center",
+    alignItems: "center",
     borderWidth: 2,
-    resizeMode: "cover",
-    marginTop: -90,
+    borderColor: COLORS.white,
   },
   name: {
-    fontFamily: "bold",
-    color: COLORS.primary,
-    marginVertical: 5,
+    fontSize: 22,
+    fontWeight: "bold",
+    color: COLORS.white,
+    marginBottom: 5,
   },
-  loginBtn: {
-    backgroundColor: COLORS.secondary,
-    padding: 2,
-    borderWidth: 0.4,
-    borderColor: COLORS.primary,
-    borderRadius: SIZES.xxLarge,
-    marginBottom: 7,
-  },
-  menuTxt: {
-    fontFamily: "regular",
-    color: COLORS.gray,
-    marginHorizontal: 20,
-    fontWeight: "600",
+  email: {
     fontSize: 14,
-    lineHeight: 26,
+    color: "rgba(255,255,255,0.8)",
   },
-  menuWrapper: {
-    marginTop: SIZES.medium + 3,
-    width: SIZES.width,
-    backgroundColor: COLORS.lightWhite,
-    borderRadius: 12,
+  content: {
+    paddingHorizontal: 20,
+    paddingBottom: 55,
+    paddingTop: 10,
   },
-  menuItem: (borderBottomWidth) => ({
-    borderBottomWidth: borderBottomWidth,
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: COLORS.gray600,
+    marginTop: 20,
+    marginBottom: 10,
+    marginLeft: 10,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  section: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    overflow: "hidden",
+    ...SHADOWS.light,
+  },
+  itemContainer: {
     flexDirection: "row",
-    paddingVertical: 15,
-    paddingHorizontal: 30,
-    borderColor: COLORS.gray,
-  }),
+    alignItems: "center",
+    padding: 16,
+  },
+  iconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: COLORS.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 15,
+  },
+  dangerIconBox: {
+    backgroundColor: "#FFEBEE",
+  },
+  itemContent: {
+    flex: 1,
+  },
+  itemTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: COLORS.text,
+  },
+  dangerText: {
+    color: COLORS.error,
+  },
+  itemSubtitle: {
+    fontSize: 12,
+    color: COLORS.gray500,
+    marginTop: 2,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.gray100,
+    marginLeft: 70,
+  },
 });

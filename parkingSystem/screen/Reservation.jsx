@@ -4,198 +4,153 @@ import {
   View,
   TouchableOpacity,
   Alert,
-  Image,
-  Platform,
-  TextInput,
   ScrollView,
   KeyboardAvoidingView,
-  ActivityIndicator,
+  Platform,
+  StatusBar,
+  Animated,
+  Dimensions
 } from "react-native";
-import React, { useState, useContext, useEffect } from "react";
+import React, { useState, useContext, useRef } from "react";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { AuthContext } from "../contexts/AuthContext";
-import { format } from "date-fns";
-import { backendUrl } from "@/constants";
+import { format, differenceInHours, differenceInMinutes } from "date-fns";
+import { backendUrl } from "../constants";
 import { useStripe } from "@stripe/stripe-react-native";
 import axios from "axios";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+import { COLORS, SIZES, SHADOWS } from "../constants/theme";
+import Button from "../components/Button";
+import BackBtn from "../components/BackBtn";
+import InputField from "../components/InputField";
+
+const { width } = Dimensions.get("window");
 
 const Reservation = ({ navigation }) => {
   const { user, isLoggedIn } = useContext(AuthContext);
+  
+  const [currentStep, setCurrentStep] = useState(1);
 
-  const [startTime, setStartTime] = useState(null);
-  const [endTime, setEndTime] = useState(null);
-  const [showPicker, setShowPicker] = useState(false);
-  const [pickerMode, setPickerMode] = useState("start");
-  const [step, setStep] = useState("date");
-
+  const [startTime, setStartTime] = useState(new Date());
+  const [endTime, setEndTime] = useState(new Date(Date.now() + 2 * 60 * 60 * 1000)); // Default 2 hours later
+  
   const [availableSlots, setAvailableSlots] = useState([]);
   const [selectedSlot, setSelectedSlot] = useState(null);
+  
   const [name, setName] = useState("");
   const [carNumber, setCarNumber] = useState("");
   const [payment, setPayment] = useState(0);
-  const [slotsChecked, setSlotsChecked] = useState(false);
-
-  const [isCalculating, setIsCalculating] = useState(false);
+  
+  const [showPicker, setShowPicker] = useState(false);
+  const [pickerMode, setPickerMode] = useState("date"); 
+  const [activeField, setActiveField] = useState("start");
+  
+  const [isLoading, setIsLoading] = useState(false);
 
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
-  const resetForm = () => {
-    setStartTime(null);
-    setEndTime(null);
-    setAvailableSlots([]);
-    setSelectedSlot(null);
-    setName("");
-    setCarNumber("");
-    setPayment(0);
-  };
-
-  const showDateTimePicker = (type) => {
-    setPickerMode(type);
-    setStep("date");
+  const initiatePicker = (field) => {
+    setActiveField(field);
+    
+    if (Platform.OS === 'ios') {
+      setPickerMode('datetime');
+    } else {
+      setPickerMode('date');
+    }
     setShowPicker(true);
   };
 
-  const handleDateTimeChange = (event, selectedDate) => {
-    if (event?.type === "dismissed") {
+  const handleDateChange = (event, selectedDate) => {
+    if (event.type === 'dismissed') {
       setShowPicker(false);
       return;
     }
 
-    if (step === "date") {
-      const currentDate = selectedDate || new Date();
-      const tempDate = new Date(currentDate);
-      setStep("time");
+    const currentDate = selectedDate || (activeField === 'start' ? startTime : endTime);
 
-      if (Platform.OS === "android") {
-        if (pickerMode === "start") setStartTime(tempDate);
-        else setEndTime(tempDate);
+    if (Platform.OS === 'android') {
+      if (pickerMode === 'date') {
+        setShowPicker(false);
+        applyDateChange(currentDate);
+        setTimeout(() => {
+          setPickerMode('time');
+          setShowPicker(true);
+        }, 100);
+      } else {
+        setShowPicker(false);
+        applyDateChange(currentDate);
       }
     } else {
-      const tempTime = selectedDate || new Date();
-      const prevDate = pickerMode === "start" ? startTime : endTime;
-
-      const finalDateTime = new Date(
-        prevDate.getFullYear(),
-        prevDate.getMonth(),
-        prevDate.getDate(),
-        tempTime.getHours(),
-        tempTime.getMinutes()
-      );
-
-      if (pickerMode === "start") setStartTime(finalDateTime);
-      else setEndTime(finalDateTime);
-
       setShowPicker(false);
-    }
-
-    if (Platform.OS === "ios") {
-      if (pickerMode === "start") setStartTime(selectedDate);
-      else setEndTime(selectedDate);
+      applyDateChange(currentDate);
     }
   };
 
-  const validateAndFetchSlots = async () => {
-    if (!startTime || !endTime) {
-      Alert.alert("Validation Error", "Start and End time are required.");
-      return;
+  const applyDateChange = (date) => {
+    if (activeField === 'start') {
+      setStartTime(date);
+      if (date > endTime) {
+        setEndTime(new Date(date.getTime() + 2 * 60 * 60 * 1000));
+      }
+    } else {
+      setEndTime(date);
     }
+  };
 
+  const proceedToSlots = async () => {
     if (endTime <= startTime) {
-      Alert.alert("Validation Error", "End time must be after Start time.");
+      Alert.alert("Invalid Time", "End time must be after Start time.");
       return;
     }
 
-    fetchDynamicPrice(startTime, endTime);
-
+    setIsLoading(true);
     try {
-      const response = await fetch(
-        `${backendUrl}/api/slotoperations/fetchAvailableSlot`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ startTime, endTime }),
-        }
-      );
+      const priceRes = await axios.post(`${backendUrl}/api/booking/calculate-price`, {
+        startTime,
+        endTime,
+      });
+      setPayment(priceRes.data.totalAmount || 0);
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch slots");
-      }
-
-      const data = await response.json();
-      const slotsFromBackend = data.availableSlots || [];
-
-      setAvailableSlots(slotsFromBackend);
-      setSlotsChecked(true);
-
-      if (!slotsFromBackend.includes(selectedSlot)) {
-        setSelectedSlot(null);
-        if (selectedSlot !== null) {
-          Alert.alert(
-            "Slot Unavailable",
-            "Previously selected slot is no longer available."
-          );
-        }
-      }
+      const slotRes = await fetch(`${backendUrl}/api/slotoperations/fetchAvailableSlot`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startTime, endTime }),
+      });
+      const slotData = await slotRes.json();
+      
+      setAvailableSlots(slotData.availableSlots || []);
+      setCurrentStep(2);
+      
     } catch (error) {
       console.error(error);
-      Alert.alert(
-        "Error",
-        "Could not fetch available slots. Please try again."
-      );
-    }
-  };
-
-  const fetchDynamicPrice = async (start, end) => {
-    if (!start || !end) return;
-
-    if (end <= start) return;
-
-    setIsCalculating(true);
-    try {
-      const response = await axios.post(
-        `${backendUrl}/api/booking/calculate-price`,
-        {
-          startTime: start,
-          endTime: end,
-        }
-      );
-
-      if (response.data) {
-        setPayment(response.data.totalAmount);
-      }
-    } catch (error) {
-      console.error("Failed to fetch price:", error);
-      Alert.alert(
-        "Error",
-        "Could not calculate dynamic price. Please check connection."
-      );
+      Alert.alert("Error", "Could not check availability. Try again.");
     } finally {
-      setIsCalculating(false);
+      setIsLoading(false);
     }
   };
 
-  const handleSlotSelect = (slot) => {
+  const selectSlot = (slot) => {
     setSelectedSlot(slot);
   };
 
-  const validateAndPay = async () => {
-    if (!name.trim()) {
-      Alert.alert("Validation Error", "Name is required.");
+  const proceedToPayment = () => {
+    if (!selectedSlot) {
+      Alert.alert("Selection Required", "Please select a parking spot.");
       return;
     }
-    if (!carNumber.trim()) {
-      Alert.alert("Validation Error", "Car Number is required.");
-      return;
-    }
+    setCurrentStep(3);
+  };
+
+  const handlePayment = async () => {
+     if (!name.trim() || !carNumber.trim()) return;
 
     try {
+      setIsLoading(true);
       const response = await fetch(`${backendUrl}/api/makePayment/payment`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amount: Math.round(payment * 100) }),
       });
 
@@ -207,9 +162,7 @@ const Reservation = ({ navigation }) => {
       }
 
       const initSheet = await initPaymentSheet({
-        merchantDisplayName: "SlotReserve",
-        customerEmail: "user@example.com",
-        allowsDelayedPaymentMethods: false,
+        merchantDisplayName: "ParkEase Haven",
         paymentIntentClientSecret: clientSecret,
       });
 
@@ -222,240 +175,255 @@ const Reservation = ({ navigation }) => {
 
       if (paymentResult.error) {
         Alert.alert("Payment Failed", paymentResult.error.message);
-        await fetch(`${backendUrl}/api/payment/savePayment`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            userId: user._id,
-            transactionId,
-            amount: payment,
-            status: "failed",
-            timestamp: new Date().toISOString(),
-          }),
-        });
       } else {
-        Alert.alert("Success", "Payment completed!", [
-          {
-            text: "OK",
-            onPress: async () => {
-              await fetch(`${backendUrl}/api/payment/savePayment`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  userId: user._id,
-                  transactionId,
-                  amount: payment,
-                  status: "success",
-                  timestamp: new Date().toISOString(),
-                }),
-              });
-
-              try {
-                const bookingDetails = {
-                  userId: user._id,
-                  name,
-                  carNumber,
-                  slot: selectedSlot,
-                  amount: payment,
-                  startTime,
-                  endTime,
-                };
-
-                await fetch(`${backendUrl}/api/booking/save`, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify(bookingDetails),
-                });
-
-                await fetch(
-                  `${backendUrl}/api/slotoperations/addReservationToSlot`,
-                  {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                      slotName: selectedSlot,
-                      userId: user._id,
-                      startTime,
-                      endTime,
-                    }),
-                  }
-                );
-
-                resetForm();
-                setSlotsChecked(false);
-              } catch (err) {
-                console.error("Reservation update failed", err);
-                Alert.alert(
-                  "Error",
-                  "Payment was successful but reservation update failed."
-                );
-              }
-            },
-          },
-        ]);
+        await finalizeBooking(transactionId);
       }
     } catch (err) {
       Alert.alert("Error", "Payment could not be processed.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const isFormComplete = name.trim() && carNumber.trim();
+  const finalizeBooking = async (transactionId) => {
+    try {
+        await fetch(`${backendUrl}/api/payment/savePayment`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId: user._id,
+              transactionId,
+              amount: payment,
+              status: "success",
+              timestamp: new Date().toISOString(),
+            }),
+        });
+
+        await fetch(`${backendUrl}/api/booking/save`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId: user._id,
+              name,
+              carNumber,
+              slot: selectedSlot,
+              amount: payment,
+              startTime,
+              endTime,
+            }),
+        });
+
+        await fetch(`${backendUrl}/api/slotoperations/addReservationToSlot`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              slotName: selectedSlot,
+              userId: user._id,
+              startTime,
+              endTime,
+            }),
+        });
+
+        Alert.alert("Success!", "Your parking spot is reserved.", [
+            { text: "View Ticket", onPress: () => navigation.navigate("Profile") }
+        ]);
+
+    } catch (err) {
+        console.error("Booking Finalization Failed", err);
+        Alert.alert("Error", "Payment successful, but booking failed. Contact support.");
+    }
+  };
 
   if (!isLoggedIn) {
     return (
-      <View style={styles.lockedContainer}>
-        <Text style={styles.title1}>Slot Reservation</Text>
-        <Image
-          source={require("../assets/images/parking-lot.png")}
-          style={styles.lockedImage}
-        />
-        <Text style={styles.lockedText}>Sign In to reserve your slot</Text>
-        <TouchableOpacity
-          style={styles.loginButton}
-          onPress={() => navigation.navigate("Login")}
-        >
-          <Text style={styles.loginButtonText}>Go to Login</Text>
-        </TouchableOpacity>
+      <View style={styles.centerContainer}>
+        <MaterialCommunityIcons name="lock-alert" size={60} color={COLORS.gray500} />
+        <Text style={styles.authMessage}>Please Login to Reserve</Text>
+        <Button title="Go to Login" onPress={() => navigation.navigate("Login")} />
       </View>
     );
   }
 
+  const renderProgressBar = () => (
+    <View style={styles.progressContainer}>
+        <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: `${(currentStep / 3) * 100}%` }]} />
+        </View>
+        <View style={styles.stepsRow}>
+            <Text style={[styles.stepLabel, currentStep >= 1 && styles.activeStep]}>Time</Text>
+            <Text style={[styles.stepLabel, currentStep >= 2 && styles.activeStep]}>Slot</Text>
+            <Text style={[styles.stepLabel, currentStep >= 3 && styles.activeStep]}>Pay</Text>
+        </View>
+    </View>
+  );
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={{ flex: 1 }}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <View style={styles.container}>
-          <Text style={styles.title}>Reserve your slot</Text>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" />
+      
+      <View style={styles.header}>
+        <BackBtn onPress={() => {
+            if(currentStep > 1) setCurrentStep(currentStep - 1);
+            else navigation.goBack();
+        }} />
+        <Text style={styles.headerTitle}>
+            {currentStep === 1 ? "Schedule" : currentStep === 2 ? "Pick a Spot" : "Confirm"}
+        </Text>
+        <View style={{ width: 44 }} /> 
+      </View>
 
-          <TouchableOpacity
-            style={styles.input}
-            onPress={() => showDateTimePicker("start")}
-          >
-            <Text>
-              {startTime
-                ? `Start: ${format(startTime, "PPpp")}`
-                : "Select Start Date & Time"}
-            </Text>
-          </TouchableOpacity>
+      {renderProgressBar()}
 
-          <TouchableOpacity
-            style={styles.input}
-            onPress={() => showDateTimePicker("end")}
-          >
-            <Text>
-              {endTime
-                ? `End: ${format(endTime, "PPpp")}`
-                : "Select End Date & Time"}
-            </Text>
-          </TouchableOpacity>
-
-          {showPicker && (
-            <DateTimePicker
-              mode={step}
-              value={
-                pickerMode === "start"
-                  ? startTime || new Date()
-                  : endTime || new Date()
-              }
-              is24Hour={false}
-              display={Platform.OS === "android" ? "default" : "inline"}
-              onChange={handleDateTimeChange}
-              minimumDate={
-                pickerMode === "start" ? new Date() : startTime || new Date()
-              }
-              maximumDate={
-                pickerMode === "start"
-                  ? new Date(new Date().getTime() + 1 * 24 * 60 * 60 * 1000) // Today + 1 day = Tomorrow
-                  : startTime
-                  ? new Date(startTime.getTime() + 2 * 24 * 60 * 60 * 1000)
-                  : undefined
-              }
-            />
-          )}
-
-          <TouchableOpacity
-            style={styles.checkButton}
-            onPress={validateAndFetchSlots}
-          >
-            <Text style={styles.checkButtonText}>
-              {availableSlots.length > 0
-                ? "Re-check Slots"
-                : "Check Available Slots"}
-            </Text>
-          </TouchableOpacity>
-
-          {slotsChecked &&
-            (availableSlots.length > 0 ? (
-              <>
-                <Text style={styles.label}>Available Slots</Text>
-                <View style={styles.slotsContainer}>
-                  {availableSlots.map((slot) => (
-                    <TouchableOpacity
-                      key={slot}
-                      style={[
-                        styles.slot,
-                        selectedSlot === slot && styles.selectedSlot,
-                      ]}
-                      onPress={() => handleSlotSelect(slot)}
-                    >
-                      <Text style={styles.slotText}>{slot}</Text>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          {currentStep === 1 && (
+            <View style={styles.stepContainer}>
+                <Text style={styles.sectionTitle}>Select Duration</Text>
+                
+                <View style={styles.timeCard}>
+                    <TouchableOpacity style={styles.timeRow} onPress={() => initiatePicker("start")}>
+                        <View style={styles.iconBox}>
+                            <MaterialCommunityIcons name="clock-start" size={24} color={COLORS.primary} />
+                        </View>
+                        <View>
+                            <Text style={styles.label}>Start Time</Text>
+                            <Text style={styles.timeValue}>{format(startTime, "MMM dd, hh:mm a")}</Text>
+                        </View>
+                        <MaterialCommunityIcons name="chevron-right" size={24} color={COLORS.gray400} style={{ marginLeft: "auto" }} />
                     </TouchableOpacity>
-                  ))}
+                    
+                    <View style={styles.divider} />
+
+                    <TouchableOpacity style={styles.timeRow} onPress={() => initiatePicker("end")}>
+                        <View style={styles.iconBox}>
+                            <MaterialCommunityIcons name="clock-end" size={24} color={COLORS.secondary} />
+                        </View>
+                        <View>
+                            <Text style={styles.label}>End Time</Text>
+                            <Text style={styles.timeValue}>{format(endTime, "MMM dd, hh:mm a")}</Text>
+                        </View>
+                         <MaterialCommunityIcons name="chevron-right" size={24} color={COLORS.gray400} style={{ marginLeft: "auto" }} />
+                    </TouchableOpacity>
                 </View>
-              </>
-            ) : (
-              <Text style={styles.noSlotsText}>
-                No slots available for the selected time.
-              </Text>
-            ))}
 
-          {selectedSlot && (
-            <View style={styles.form}>
-              <Text style={styles.selectedSlotText}>
-                Selected Slot: {selectedSlot}
-              </Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Name"
-                value={name}
-                onChangeText={setName}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Car Number"
-                value={carNumber}
-                onChangeText={setCarNumber}
-              />
+                <View style={styles.infoBox}>
+                     <MaterialCommunityIcons name="information-outline" size={20} color={COLORS.gray600} />
+                     <Text style={styles.infoText}>
+                        Total Duration: <Text style={{fontWeight: 'bold'}}>{differenceInHours(endTime, startTime)}h {differenceInMinutes(endTime, startTime) % 60}m</Text>
+                     </Text>
+                </View>
 
-              <TouchableOpacity
-                style={[
-                  styles.payButton,
-                  (!isFormComplete || isCalculating) && styles.disabledButton,
-                ]}
-                onPress={validateAndPay}
-                disabled={!isFormComplete || isCalculating}
-              >
-                {isCalculating ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.payText}>Pay ₹{payment}</Text>
-                )}
-              </TouchableOpacity>
+                <View style={{ flex: 1 }} />
+                <Button title="Find Spots" onPress={proceedToSlots} loader={isLoading} />
             </View>
           )}
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          {currentStep === 2 && (
+            <View style={styles.stepContainer}>
+                <Text style={styles.sectionTitle}>Available Slots</Text>
+                
+                <View style={styles.slotsGrid}>
+                    {availableSlots.length > 0 ? (
+                        availableSlots.map((slot) => (
+                            <TouchableOpacity
+                                key={slot}
+                                style={[
+                                    styles.slotItem,
+                                    selectedSlot === slot && styles.selectedSlotItem
+                                ]}
+                                onPress={() => selectSlot(slot)}
+                            >
+                                <Text style={[
+                                    styles.slotText, 
+                                    selectedSlot === slot && styles.selectedSlotText
+                                ]}>{slot}</Text>
+                                {selectedSlot === slot && (
+                                    <View style={styles.checkIcon}>
+                                        <MaterialCommunityIcons name="check" size={12} color={COLORS.white} />
+                                    </View>
+                                )}
+                            </TouchableOpacity>
+                        ))
+                    ) : (
+                        <View style={styles.emptyContainer}>
+                             <MaterialCommunityIcons name="emoticon-sad-outline" size={50} color={COLORS.gray400} />
+                             <Text style={styles.emptyText}>No slots available for this time.</Text>
+                        </View>
+                    )}
+                </View>
+
+                <View style={{ flex: 1 }} />
+                <Button 
+                    title={selectedSlot ? `Book ${selectedSlot}` : "Select a Slot"} 
+                    onPress={proceedToPayment} 
+                    isValid={!!selectedSlot}
+                />
+            </View>
+          )}
+          {currentStep === 3 && (
+            <View style={styles.stepContainer}>
+                 
+                 <View style={styles.billCard}>
+                    <Text style={styles.billTitle}>Reservation Summary</Text>
+                    <View style={styles.billRow}>
+                        <Text style={styles.billLabel}>Spot</Text>
+                        <Text style={styles.billValue}>{selectedSlot}</Text>
+                    </View>
+                    <View style={styles.billRow}>
+                        <Text style={styles.billLabel}>Date</Text>
+                        <Text style={styles.billValue}>{format(startTime, "MMM dd")}</Text>
+                    </View>
+                    <View style={styles.billRow}>
+                        <Text style={styles.billLabel}>Time</Text>
+                        <Text style={styles.billValue}>{format(startTime, "hh:mm a")} - {format(endTime, "hh:mm a")}</Text>
+                    </View>
+                    <View style={styles.divider} />
+                    <View style={styles.billRow}>
+                        <Text style={styles.totalLabel}>Total to Pay</Text>
+                        <Text style={styles.totalValue}>₹{payment}</Text>
+                    </View>
+                 </View>
+
+                 <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Driver Details</Text>
+                 
+                 <InputField
+                    label="Full Name"
+                    iconName="account-outline"
+                    placeholder="e.g. John Doe"
+                    value={name}
+                    onChangeText={setName}
+                 />
+
+                 <InputField
+                    label="Car Number"
+                    iconName="car-outline"
+                    placeholder="e.g. KA-01-AB-1234"
+                    value={carNumber}
+                    onChangeText={setCarNumber}
+                 />
+
+                 <View style={{ flex: 1 }} />
+                 <Button 
+                    title={`Pay ₹${payment}`} 
+                    onPress={handlePayment} 
+                    loader={isLoading}
+                    isValid={name.length > 0 && carNumber.length > 0}
+                 />
+            </View>
+          )}
+
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {showPicker && (
+        <DateTimePicker
+          value={activeField === 'start' ? startTime : endTime}
+          mode={pickerMode}
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleDateChange}
+          minimumDate={new Date()}
+        />
+      )}
+    </SafeAreaView>
   );
 };
 
@@ -464,125 +432,201 @@ export default Reservation;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: COLORS.background,
   },
-  scrollContainer: {
-    flexGrow: 1,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    marginBottom: 20,
-    textAlign: "center",
-  },
-  input: {
-    backgroundColor: "#fff",
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: "#ddd",
-  },
-  checkButton: {
-    backgroundColor: "#007BFF",
-    padding: 15,
-    borderRadius: 10,
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  checkButtonText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 16,
-  },
-  label: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 10,
-  },
-  slotsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
-  slot: {
-    width: "30%",
-    backgroundColor: "#e0e0e0",
-    padding: 15,
-    borderRadius: 10,
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  selectedSlot: {
-    backgroundColor: "#28a745",
-  },
-  slotText: {
-    fontWeight: "bold",
-  },
-  noSlotsText: {
-    textAlign: "center",
-    color: "red",
-    marginTop: 10,
-  },
-  form: {
-    marginTop: 20,
-  },
-  selectedSlotText: {
-    fontSize: 16,
-    fontWeight: "bold",
-    marginBottom: 10,
-    color: "#333",
-  },
-  payButton: {
-    backgroundColor: "#28a745",
-    padding: 15,
-    borderRadius: 10,
-    alignItems: "center",
-    marginTop: 10,
-  },
-  disabledButton: {
-    backgroundColor: "#ccc",
-  },
-  payText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 18,
-  },
-  lockedContainer: {
+  centerContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
-    backgroundColor: "#fff",
   },
-  title1: {
-    fontSize: 28,
-    fontWeight: "bold",
-    marginBottom: 30,
-    color: "#333",
-  },
-  lockedImage: {
-    width: 200,
-    height: 200,
-    marginBottom: 20,
-    resizeMode: "contain",
-  },
-  lockedText: {
+  authMessage: {
     fontSize: 18,
-    color: "#666",
-    marginBottom: 20,
+    color: COLORS.gray600,
+    marginVertical: 20,
     textAlign: "center",
   },
-  loginButton: {
-    backgroundColor: "#007BFF",
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    borderRadius: 25,
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
   },
-  loginButtonText: {
-    color: "#fff",
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  progressContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  progressBar: {
+    height: 4,
+    backgroundColor: COLORS.gray200,
+    borderRadius: 2,
+    marginBottom: 8,
+    overflow: 'hidden'
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: COLORS.primary,
+  },
+  stepsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  stepLabel: {
+    fontSize: 12,
+    color: COLORS.gray400,
+    fontWeight: "600",
+  },
+  activeStep: {
+    color: COLORS.primary,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingBottom: 30,
+  },
+  stepContainer: {
+    flex: 1,
+  },
+  sectionTitle: {
     fontSize: 16,
     fontWeight: "bold",
+    color: COLORS.text,
+    marginBottom: 15,
+  },
+  timeCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: SIZES.radius,
+    padding: 5,
+    ...SHADOWS.light,
+    marginBottom: 20,
+  },
+  timeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 15,
+  },
+  iconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: COLORS.gray100,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 15,
+  },
+  label: {
+    fontSize: 12,
+    color: COLORS.gray500,
+    marginBottom: 2,
+  },
+  timeValue: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.gray200,
+    marginLeft: 70,
+  },
+  infoBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.primaryLight,
+    padding: 12,
+    borderRadius: 8,
+  },
+  infoText: {
+    marginLeft: 8,
+    color: COLORS.primaryDark,
+    fontSize: 14,
+  },
+  slotsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    justifyContent: "flex-start",
+  },
+  slotItem: {
+    width: (width - 60) / 3,
+    height: 50,
+    borderRadius: 10,
+    backgroundColor: COLORS.gray200,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  selectedSlotItem: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+    ...SHADOWS.medium
+  },
+  slotText: {
+    fontWeight: "bold",
+    color: COLORS.gray600,
+  },
+  selectedSlotText: {
+    color: COLORS.white,
+  },
+  checkIcon: {
+    position: "absolute",
+    top: 2,
+    right: 2,
+  },
+  emptyContainer: {
+    width: "100%",
+    alignItems: "center",
+    padding: 30,
+  },
+  emptyText: {
+    marginTop: 10,
+    color: COLORS.gray500,
+  },
+  billCard: {
+    backgroundColor: COLORS.surface,
+    padding: 20,
+    borderRadius: SIZES.radius,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+    marginBottom: 20,
+  },
+  billTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: COLORS.gray500,
+    marginBottom: 15,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  billRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  billLabel: {
+    color: COLORS.gray600,
+    fontSize: 16,
+  },
+  billValue: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  totalLabel: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: COLORS.text,
+  },
+  totalValue: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: COLORS.primary,
   },
 });

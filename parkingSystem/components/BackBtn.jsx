@@ -1,24 +1,37 @@
-import { StyleSheet, TouchableOpacity, View } from 'react-native'
-import React from 'react'
-import { Ionicons } from '@expo/vector-icons'
-import { COLORS, SIZES } from '@/constants'
+import React from "react";
+import { TouchableOpacity, StyleSheet } from "react-native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { COLORS, SIZES, SHADOWS } from "../constants/theme";
 
-const BackBtn = ({onPress}) => {
+const BackBtn = ({ onPress }) => {
   return (
-    <TouchableOpacity onPress={onPress} style = {styles.backBtn}>
-        <Ionicons name='chevron-back-circle' size={30}
-        color={COLORS.green}/>
+    <TouchableOpacity 
+      onPress={onPress} 
+      style={styles.container}
+      activeOpacity={0.7}
+    >
+      <MaterialCommunityIcons 
+        name="arrow-left" 
+        size={24} 
+        color={COLORS.text} 
+      />
     </TouchableOpacity>
-  )
-}
+  );
+};
 
-export default BackBtn
+export default BackBtn;
 
 const styles = StyleSheet.create({
-    backBtn: {
-        alignItems: "center",
-        position: "absolute",
-        zIndex: 999,
-        top: SIZES.medium-47
-    }
-})
+  container: {
+    height: 44,
+    width: 44,
+    borderRadius: 22, 
+    backgroundColor: COLORS.surface,
+    alignItems: "center",
+    justifyContent: "center",
+    ...SHADOWS.light,
+    marginTop: -1,
+    marginLeft: -3, 
+    zIndex: 10,
+  },
+});
