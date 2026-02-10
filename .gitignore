@@ -8,6 +8,7 @@ esp32Simulate
 .DS_Store
 
 parkingSystem/.env
+parkingSystem/app.config.js
 
 ml_service/.env
 ml_service/.venv

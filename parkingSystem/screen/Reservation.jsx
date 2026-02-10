@@ -8,15 +8,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   StatusBar,
-  Animated,
   Dimensions
 } from "react-native";
-import React, { useState, useContext, useRef } from "react";
+import React, { useState, useContext, useCallback } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { AuthContext } from "../contexts/AuthContext";
 import { format, differenceInHours, differenceInMinutes } from "date-fns";
 import { backendUrl } from "../constants";
-import { useStripe } from "@stripe/stripe-react-native";
+import { useStripe } from "@stripe/stripe-react-native"; 
 import axios from "axios";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -34,7 +34,7 @@ const Reservation = ({ navigation }) => {
   const [currentStep, setCurrentStep] = useState(1);
 
   const [startTime, setStartTime] = useState(new Date());
-  const [endTime, setEndTime] = useState(new Date(Date.now() + 2 * 60 * 60 * 1000)); // Default 2 hours later
+  const [endTime, setEndTime] = useState(new Date(Date.now() + 2 * 60 * 60 * 1000));
   
   const [availableSlots, setAvailableSlots] = useState([]);
   const [selectedSlot, setSelectedSlot] = useState(null);
@@ -50,6 +50,25 @@ const Reservation = ({ navigation }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
+
+  const resetForm = () => {
+    setCurrentStep(1);
+    setStartTime(new Date());
+    setEndTime(new Date(Date.now() + 2 * 60 * 60 * 1000));
+    setAvailableSlots([]);
+    setSelectedSlot(null);
+    setName("");
+    setCarNumber("");
+    setPayment(0);
+    setIsLoading(false);
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      resetForm();
+    }, [])
+  );
+
 
   const initiatePicker = (field) => {
     setActiveField(field);
@@ -225,7 +244,10 @@ const Reservation = ({ navigation }) => {
         });
 
         Alert.alert("Success!", "Your parking spot is reserved.", [
-            { text: "View Ticket", onPress: () => navigation.navigate("Profile") }
+            { text: "View Ticket", onPress: () => {
+                resetForm(); 
+                navigation.navigate("Profile");
+            }}
         ]);
 
     } catch (err) {
@@ -274,8 +296,17 @@ const Reservation = ({ navigation }) => {
 
       {renderProgressBar()}
 
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : undefined} 
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
+      >
+        <ScrollView 
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 150 }]} 
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          
           {currentStep === 1 && (
             <View style={styles.stepContainer}>
                 <Text style={styles.sectionTitle}>Select Duration</Text>
@@ -317,6 +348,7 @@ const Reservation = ({ navigation }) => {
                 <Button title="Find Spots" onPress={proceedToSlots} loader={isLoading} />
             </View>
           )}
+
           {currentStep === 2 && (
             <View style={styles.stepContainer}>
                 <Text style={styles.sectionTitle}>Available Slots</Text>
@@ -359,6 +391,7 @@ const Reservation = ({ navigation }) => {
                 />
             </View>
           )}
+
           {currentStep === 3 && (
             <View style={styles.stepContainer}>
                  
@@ -488,7 +521,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 20,
-    paddingBottom: 30,
   },
   stepContainer: {
     flex: 1,
