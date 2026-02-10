@@ -174,11 +174,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
-    paddingHorizontal: 20,
+    paddingHorizontal: 7,
+    paddingTop: -30,
   },
   headerContainer: {
     alignItems: "center",
-    marginVertical: 20,
+    marginBottom: 30,
   },
   loginCover: {
     height: SIZES.height / 3.5,

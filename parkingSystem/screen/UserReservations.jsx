@@ -308,7 +308,7 @@ const UserReservations = ({ navigation }) => {
               />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>My Reservations</Text>
-            <View style={{ width: 40 }} />
+            <View style={{ width: 40}} />
           </View>
         </SafeAreaView>
       </LinearGradient>
@@ -408,7 +408,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: 10,
   },
   headerTitle: {
     fontSize: 20,

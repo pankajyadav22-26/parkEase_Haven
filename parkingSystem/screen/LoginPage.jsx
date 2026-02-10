@@ -150,12 +150,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
-    paddingHorizontal: 20,
+    paddingHorizontal: 7,
+    paddingTop: -30,
   },
   headerContainer: {
     alignItems: "center",
     marginBottom: 30,
-    marginTop: 10,
   },
   loginCover: {
     height: SIZES.height / 3.5,
@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     textAlign: "center",
     letterSpacing: 0.5,
-    marginBottom: 8,
+    marginBottom: 5,
   },
   subtitle: {
     fontSize: 16,

@@ -8,7 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   StatusBar,
-  Dimensions
+  Dimensions,
 } from "react-native";
 import React, { useState, useContext, useCallback } from "react";
 import { useFocusEffect } from "@react-navigation/native";
@@ -16,7 +16,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { AuthContext } from "../contexts/AuthContext";
 import { format, differenceInHours, differenceInMinutes } from "date-fns";
 import { backendUrl } from "../constants";
-import { useStripe } from "@stripe/stripe-react-native"; 
+import { useStripe } from "@stripe/stripe-react-native";
 import axios from "axios";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -30,23 +30,25 @@ const { width } = Dimensions.get("window");
 
 const Reservation = ({ navigation }) => {
   const { user, isLoggedIn } = useContext(AuthContext);
-  
+
   const [currentStep, setCurrentStep] = useState(1);
 
   const [startTime, setStartTime] = useState(new Date());
-  const [endTime, setEndTime] = useState(new Date(Date.now() + 2 * 60 * 60 * 1000));
-  
+  const [endTime, setEndTime] = useState(
+    new Date(Date.now() + 2 * 60 * 60 * 1000),
+  );
+
   const [availableSlots, setAvailableSlots] = useState([]);
   const [selectedSlot, setSelectedSlot] = useState(null);
-  
+
   const [name, setName] = useState("");
   const [carNumber, setCarNumber] = useState("");
   const [payment, setPayment] = useState(0);
-  
+
   const [showPicker, setShowPicker] = useState(false);
-  const [pickerMode, setPickerMode] = useState("date"); 
+  const [pickerMode, setPickerMode] = useState("date");
   const [activeField, setActiveField] = useState("start");
-  
+
   const [isLoading, setIsLoading] = useState(false);
 
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
@@ -66,35 +68,35 @@ const Reservation = ({ navigation }) => {
   useFocusEffect(
     useCallback(() => {
       resetForm();
-    }, [])
+    }, []),
   );
-
 
   const initiatePicker = (field) => {
     setActiveField(field);
-    
-    if (Platform.OS === 'ios') {
-      setPickerMode('datetime');
+
+    if (Platform.OS === "ios") {
+      setPickerMode("datetime");
     } else {
-      setPickerMode('date');
+      setPickerMode("date");
     }
     setShowPicker(true);
   };
 
   const handleDateChange = (event, selectedDate) => {
-    if (event.type === 'dismissed') {
+    if (event.type === "dismissed") {
       setShowPicker(false);
       return;
     }
 
-    const currentDate = selectedDate || (activeField === 'start' ? startTime : endTime);
+    const currentDate =
+      selectedDate || (activeField === "start" ? startTime : endTime);
 
-    if (Platform.OS === 'android') {
-      if (pickerMode === 'date') {
+    if (Platform.OS === "android") {
+      if (pickerMode === "date") {
         setShowPicker(false);
         applyDateChange(currentDate);
         setTimeout(() => {
-          setPickerMode('time');
+          setPickerMode("time");
           setShowPicker(true);
         }, 100);
       } else {
@@ -108,7 +110,7 @@ const Reservation = ({ navigation }) => {
   };
 
   const applyDateChange = (date) => {
-    if (activeField === 'start') {
+    if (activeField === "start") {
       setStartTime(date);
       if (date > endTime) {
         setEndTime(new Date(date.getTime() + 2 * 60 * 60 * 1000));
@@ -126,22 +128,27 @@ const Reservation = ({ navigation }) => {
 
     setIsLoading(true);
     try {
-      const priceRes = await axios.post(`${backendUrl}/api/booking/calculate-price`, {
-        startTime,
-        endTime,
-      });
+      const priceRes = await axios.post(
+        `${backendUrl}/api/booking/calculate-price`,
+        {
+          startTime,
+          endTime,
+        },
+      );
       setPayment(priceRes.data.totalAmount || 0);
 
-      const slotRes = await fetch(`${backendUrl}/api/slotoperations/fetchAvailableSlot`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ startTime, endTime }),
-      });
+      const slotRes = await fetch(
+        `${backendUrl}/api/slotoperations/fetchAvailableSlot`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ startTime, endTime }),
+        },
+      );
       const slotData = await slotRes.json();
-      
+
       setAvailableSlots(slotData.availableSlots || []);
       setCurrentStep(2);
-      
     } catch (error) {
       console.error(error);
       Alert.alert("Error", "Could not check availability. Try again.");
@@ -163,7 +170,7 @@ const Reservation = ({ navigation }) => {
   };
 
   const handlePayment = async () => {
-     if (!name.trim() || !carNumber.trim()) return;
+    if (!name.trim() || !carNumber.trim()) return;
 
     try {
       setIsLoading(true);
@@ -206,252 +213,337 @@ const Reservation = ({ navigation }) => {
 
   const finalizeBooking = async (transactionId) => {
     try {
-        await fetch(`${backendUrl}/api/payment/savePayment`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              userId: user._id,
-              transactionId,
-              amount: payment,
-              status: "success",
-              timestamp: new Date().toISOString(),
-            }),
-        });
+      await fetch(`${backendUrl}/api/payment/savePayment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user._id,
+          transactionId,
+          amount: payment,
+          status: "success",
+          timestamp: new Date().toISOString(),
+        }),
+      });
 
-        await fetch(`${backendUrl}/api/booking/save`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              userId: user._id,
-              name,
-              carNumber,
-              slot: selectedSlot,
-              amount: payment,
-              startTime,
-              endTime,
-            }),
-        });
+      await fetch(`${backendUrl}/api/booking/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user._id,
+          name,
+          carNumber,
+          slot: selectedSlot,
+          amount: payment,
+          startTime,
+          endTime,
+        }),
+      });
 
-        await fetch(`${backendUrl}/api/slotoperations/addReservationToSlot`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              slotName: selectedSlot,
-              userId: user._id,
-              startTime,
-              endTime,
-            }),
-        });
+      await fetch(`${backendUrl}/api/slotoperations/addReservationToSlot`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slotName: selectedSlot,
+          userId: user._id,
+          startTime,
+          endTime,
+        }),
+      });
 
-        Alert.alert("Success!", "Your parking spot is reserved.", [
-            { text: "View Ticket", onPress: () => {
-                resetForm(); 
-                navigation.navigate("Profile");
-            }}
-        ]);
-
+      Alert.alert("Success!", "Your parking spot is reserved.", [
+        {
+          text: "View Ticket",
+          onPress: () => {
+            resetForm();
+            navigation.navigate("Profile");
+          },
+        },
+      ]);
     } catch (err) {
-        console.error("Booking Finalization Failed", err);
-        Alert.alert("Error", "Payment successful, but booking failed. Contact support.");
+      console.error("Booking Finalization Failed", err);
+      Alert.alert(
+        "Error",
+        "Payment successful, but booking failed. Contact support.",
+      );
     }
   };
 
   if (!isLoggedIn) {
     return (
       <View style={styles.centerContainer}>
-        <MaterialCommunityIcons name="lock-alert" size={60} color={COLORS.gray500} />
+        <MaterialCommunityIcons
+          name="lock-alert"
+          size={60}
+          color={COLORS.gray500}
+        />
         <Text style={styles.authMessage}>Please Login to Reserve</Text>
-        <Button title="Go to Login" onPress={() => navigation.navigate("Login")} />
+        <Button
+          title="Go to Login"
+          onPress={() => navigation.navigate("Login")}
+        />
       </View>
     );
   }
 
   const renderProgressBar = () => (
     <View style={styles.progressContainer}>
-        <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${(currentStep / 3) * 100}%` }]} />
-        </View>
-        <View style={styles.stepsRow}>
-            <Text style={[styles.stepLabel, currentStep >= 1 && styles.activeStep]}>Time</Text>
-            <Text style={[styles.stepLabel, currentStep >= 2 && styles.activeStep]}>Slot</Text>
-            <Text style={[styles.stepLabel, currentStep >= 3 && styles.activeStep]}>Pay</Text>
-        </View>
+      <View style={styles.progressBar}>
+        <View
+          style={[
+            styles.progressFill,
+            { width: `${(currentStep / 3) * 100}%` },
+          ]}
+        />
+      </View>
+      <View style={styles.stepsRow}>
+        <Text style={[styles.stepLabel, currentStep >= 1 && styles.activeStep]}>
+          Time
+        </Text>
+        <Text style={[styles.stepLabel, currentStep >= 2 && styles.activeStep]}>
+          Slot
+        </Text>
+        <Text style={[styles.stepLabel, currentStep >= 3 && styles.activeStep]}>
+          Pay
+        </Text>
+      </View>
     </View>
   );
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-      
       <View style={styles.header}>
-        <BackBtn onPress={() => {
-            if(currentStep > 1) setCurrentStep(currentStep - 1);
+        <BackBtn
+          onPress={() => {
+            if (currentStep > 1) setCurrentStep(currentStep - 1);
             else navigation.goBack();
-        }} />
+          }}
+        />
         <Text style={styles.headerTitle}>
-            {currentStep === 1 ? "Schedule" : currentStep === 2 ? "Pick a Spot" : "Confirm"}
+          {currentStep === 1
+            ? "Schedule"
+            : currentStep === 2
+              ? "Pick a Spot"
+              : "Confirm"}
         </Text>
-        <View style={{ width: 44 }} /> 
+        <View style={{ width: 44 }} />
       </View>
 
       {renderProgressBar()}
 
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === "ios" ? "padding" : undefined} 
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
         keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
       >
-        <ScrollView 
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: 150 }]} 
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 150 }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          
           {currentStep === 1 && (
             <View style={styles.stepContainer}>
-                <Text style={styles.sectionTitle}>Select Duration</Text>
-                
-                <View style={styles.timeCard}>
-                    <TouchableOpacity style={styles.timeRow} onPress={() => initiatePicker("start")}>
-                        <View style={styles.iconBox}>
-                            <MaterialCommunityIcons name="clock-start" size={24} color={COLORS.primary} />
-                        </View>
-                        <View>
-                            <Text style={styles.label}>Start Time</Text>
-                            <Text style={styles.timeValue}>{format(startTime, "MMM dd, hh:mm a")}</Text>
-                        </View>
-                        <MaterialCommunityIcons name="chevron-right" size={24} color={COLORS.gray400} style={{ marginLeft: "auto" }} />
-                    </TouchableOpacity>
-                    
-                    <View style={styles.divider} />
+              <Text style={styles.sectionTitle}>Select Duration</Text>
 
-                    <TouchableOpacity style={styles.timeRow} onPress={() => initiatePicker("end")}>
-                        <View style={styles.iconBox}>
-                            <MaterialCommunityIcons name="clock-end" size={24} color={COLORS.secondary} />
-                        </View>
-                        <View>
-                            <Text style={styles.label}>End Time</Text>
-                            <Text style={styles.timeValue}>{format(endTime, "MMM dd, hh:mm a")}</Text>
-                        </View>
-                         <MaterialCommunityIcons name="chevron-right" size={24} color={COLORS.gray400} style={{ marginLeft: "auto" }} />
-                    </TouchableOpacity>
-                </View>
+              <View style={styles.timeCard}>
+                <TouchableOpacity
+                  style={styles.timeRow}
+                  onPress={() => initiatePicker("start")}
+                >
+                  <View style={styles.iconBox}>
+                    <MaterialCommunityIcons
+                      name="clock-start"
+                      size={24}
+                      color={COLORS.primary}
+                    />
+                  </View>
+                  <View>
+                    <Text style={styles.label}>Start Time</Text>
+                    <Text style={styles.timeValue}>
+                      {format(startTime, "MMM dd, hh:mm a")}
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons
+                    name="chevron-right"
+                    size={24}
+                    color={COLORS.gray400}
+                    style={{ marginLeft: "auto" }}
+                  />
+                </TouchableOpacity>
 
-                <View style={styles.infoBox}>
-                     <MaterialCommunityIcons name="information-outline" size={20} color={COLORS.gray600} />
-                     <Text style={styles.infoText}>
-                        Total Duration: <Text style={{fontWeight: 'bold'}}>{differenceInHours(endTime, startTime)}h {differenceInMinutes(endTime, startTime) % 60}m</Text>
-                     </Text>
-                </View>
+                <View style={styles.divider} />
 
-                <View style={{ flex: 1 }} />
-                <Button title="Find Spots" onPress={proceedToSlots} loader={isLoading} />
+                <TouchableOpacity
+                  style={styles.timeRow}
+                  onPress={() => initiatePicker("end")}
+                >
+                  <View style={styles.iconBox}>
+                    <MaterialCommunityIcons
+                      name="clock-end"
+                      size={24}
+                      color={COLORS.secondary}
+                    />
+                  </View>
+                  <View>
+                    <Text style={styles.label}>End Time</Text>
+                    <Text style={styles.timeValue}>
+                      {format(endTime, "MMM dd, hh:mm a")}
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons
+                    name="chevron-right"
+                    size={24}
+                    color={COLORS.gray400}
+                    style={{ marginLeft: "auto" }}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.infoBox}>
+                <MaterialCommunityIcons
+                  name="information-outline"
+                  size={20}
+                  color={COLORS.gray600}
+                />
+                <Text style={styles.infoText}>
+                  Total Duration:{" "}
+                  <Text style={{ fontWeight: "bold" }}>
+                    {differenceInHours(endTime, startTime)}h{" "}
+                    {differenceInMinutes(endTime, startTime) % 60}m
+                  </Text>
+                </Text>
+              </View>
+
+              <View style={{ flex: 1 }} />
+              <Button
+                title="Find Spots"
+                onPress={proceedToSlots}
+                loader={isLoading}
+              />
             </View>
           )}
 
           {currentStep === 2 && (
             <View style={styles.stepContainer}>
-                <Text style={styles.sectionTitle}>Available Slots</Text>
-                
-                <View style={styles.slotsGrid}>
-                    {availableSlots.length > 0 ? (
-                        availableSlots.map((slot) => (
-                            <TouchableOpacity
-                                key={slot}
-                                style={[
-                                    styles.slotItem,
-                                    selectedSlot === slot && styles.selectedSlotItem
-                                ]}
-                                onPress={() => selectSlot(slot)}
-                            >
-                                <Text style={[
-                                    styles.slotText, 
-                                    selectedSlot === slot && styles.selectedSlotText
-                                ]}>{slot}</Text>
-                                {selectedSlot === slot && (
-                                    <View style={styles.checkIcon}>
-                                        <MaterialCommunityIcons name="check" size={12} color={COLORS.white} />
-                                    </View>
-                                )}
-                            </TouchableOpacity>
-                        ))
-                    ) : (
-                        <View style={styles.emptyContainer}>
-                             <MaterialCommunityIcons name="emoticon-sad-outline" size={50} color={COLORS.gray400} />
-                             <Text style={styles.emptyText}>No slots available for this time.</Text>
-                        </View>
-                    )}
-                </View>
+              <Text style={styles.sectionTitle}>Available Slots</Text>
 
-                <View style={{ flex: 1 }} />
-                <Button 
-                    title={selectedSlot ? `Book ${selectedSlot}` : "Select a Slot"} 
-                    onPress={proceedToPayment} 
-                    isValid={!!selectedSlot}
-                />
+              <View style={styles.slotsGrid}>
+                {availableSlots.length > 0 ? (
+                  availableSlots.map((slot) => (
+                    <TouchableOpacity
+                      key={slot}
+                      style={[
+                        styles.slotItem,
+                        selectedSlot === slot && styles.selectedSlotItem,
+                      ]}
+                      onPress={() => selectSlot(slot)}
+                    >
+                      <Text
+                        style={[
+                          styles.slotText,
+                          selectedSlot === slot && styles.selectedSlotText,
+                        ]}
+                      >
+                        {slot}
+                      </Text>
+                      {selectedSlot === slot && (
+                        <View style={styles.checkIcon}>
+                          <MaterialCommunityIcons
+                            name="check"
+                            size={12}
+                            color={COLORS.white}
+                          />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <View style={styles.emptyContainer}>
+                    <MaterialCommunityIcons
+                      name="emoticon-sad-outline"
+                      size={50}
+                      color={COLORS.gray400}
+                    />
+                    <Text style={styles.emptyText}>
+                      No slots available for this time.
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={{ flex: 1 }} />
+              <Button
+                title={selectedSlot ? `Book ${selectedSlot}` : "Select a Slot"}
+                onPress={proceedToPayment}
+                isValid={!!selectedSlot}
+              />
             </View>
           )}
 
           {currentStep === 3 && (
             <View style={styles.stepContainer}>
-                 
-                 <View style={styles.billCard}>
-                    <Text style={styles.billTitle}>Reservation Summary</Text>
-                    <View style={styles.billRow}>
-                        <Text style={styles.billLabel}>Spot</Text>
-                        <Text style={styles.billValue}>{selectedSlot}</Text>
-                    </View>
-                    <View style={styles.billRow}>
-                        <Text style={styles.billLabel}>Date</Text>
-                        <Text style={styles.billValue}>{format(startTime, "MMM dd")}</Text>
-                    </View>
-                    <View style={styles.billRow}>
-                        <Text style={styles.billLabel}>Time</Text>
-                        <Text style={styles.billValue}>{format(startTime, "hh:mm a")} - {format(endTime, "hh:mm a")}</Text>
-                    </View>
-                    <View style={styles.divider} />
-                    <View style={styles.billRow}>
-                        <Text style={styles.totalLabel}>Total to Pay</Text>
-                        <Text style={styles.totalValue}>₹{payment}</Text>
-                    </View>
-                 </View>
+              <View style={styles.billCard}>
+                <Text style={styles.billTitle}>Reservation Summary</Text>
+                <View style={styles.billRow}>
+                  <Text style={styles.billLabel}>Spot</Text>
+                  <Text style={styles.billValue}>{selectedSlot}</Text>
+                </View>
+                <View style={styles.billRow}>
+                  <Text style={styles.billLabel}>Date</Text>
+                  <Text style={styles.billValue}>
+                    {format(startTime, "MMM dd")}
+                  </Text>
+                </View>
+                <View style={styles.billRow}>
+                  <Text style={styles.billLabel}>Time</Text>
+                  <Text style={styles.billValue}>
+                    {format(startTime, "hh:mm a")} -{" "}
+                    {format(endTime, "hh:mm a")}
+                  </Text>
+                </View>
+                <View style={styles.divider} />
+                <View style={styles.billRow}>
+                  <Text style={styles.totalLabel}>Total to Pay</Text>
+                  <Text style={styles.totalValue}>₹{payment}</Text>
+                </View>
+              </View>
 
-                 <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Driver Details</Text>
-                 
-                 <InputField
-                    label="Full Name"
-                    iconName="account-outline"
-                    placeholder="e.g. John Doe"
-                    value={name}
-                    onChangeText={setName}
-                 />
+              <Text style={[styles.sectionTitle, { marginTop: 20 }]}>
+                Driver Details
+              </Text>
 
-                 <InputField
-                    label="Car Number"
-                    iconName="car-outline"
-                    placeholder="e.g. KA-01-AB-1234"
-                    value={carNumber}
-                    onChangeText={setCarNumber}
-                 />
+              <InputField
+                label="Full Name"
+                iconName="account-outline"
+                placeholder="e.g. John Doe"
+                value={name}
+                onChangeText={setName}
+              />
 
-                 <View style={{ flex: 1 }} />
-                 <Button 
-                    title={`Pay ₹${payment}`} 
-                    onPress={handlePayment} 
-                    loader={isLoading}
-                    isValid={name.length > 0 && carNumber.length > 0}
-                 />
+              <InputField
+                label="Car Number"
+                iconName="car-outline"
+                placeholder="e.g. KA-01-AB-1234"
+                value={carNumber}
+                onChangeText={setCarNumber}
+              />
+
+              <View style={{ flex: 1 }} />
+              <Button
+                title={`Pay ₹${payment}`}
+                onPress={handlePayment}
+                loader={isLoading}
+                isValid={name.length > 0 && carNumber.length > 0}
+              />
             </View>
           )}
-
         </ScrollView>
       </KeyboardAvoidingView>
 
       {showPicker && (
         <DateTimePicker
-          value={activeField === 'start' ? startTime : endTime}
+          value={activeField === "start" ? startTime : endTime}
           mode={pickerMode}
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          display={Platform.OS === "ios" ? "spinner" : "default"}
           onChange={handleDateChange}
           minimumDate={new Date()}
         />
@@ -466,6 +558,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+    paddingTop: -36,
   },
   centerContainer: {
     flex: 1,
@@ -500,7 +593,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray200,
     borderRadius: 2,
     marginBottom: 8,
-    overflow: 'hidden'
+    overflow: "hidden",
   },
   progressFill: {
     height: "100%",
@@ -598,7 +691,7 @@ const styles = StyleSheet.create({
   selectedSlotItem: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
-    ...SHADOWS.medium
+    ...SHADOWS.medium,
   },
   slotText: {
     fontWeight: "bold",

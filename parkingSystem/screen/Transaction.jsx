@@ -44,10 +44,10 @@ const Transaction = ({ navigation }) => {
   const [showFilters, setShowFilters] = useState(false);
   
   const [statusFilter, setStatusFilter] = useState("all");
-  const [dateMode, setDateMode] = useState("exact"); // 'exact', 'month', 'year'
+  const [dateMode, setDateMode] = useState("exact");
   
-  const [selectedDate, setSelectedDate] = useState(null); // For 'exact'
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth()); // 0-11
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -314,7 +314,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 10,
   },
   headerTitle: {
     fontSize: 20,

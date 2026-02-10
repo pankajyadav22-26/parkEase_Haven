@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
   },
   profileSection: {
     alignItems: "center",
-    marginTop: 20,
+    marginTop: -20,
   },
   imageContainer: {
     position: "relative",
