@@ -24,7 +24,7 @@ const BottomTabNavigation = () => {
           bottom: 0,
           left: 0,
           right: 0,
-          height: (Platform.OS === 'ios' ? 50 : 60) + insets.bottom,
+          height: (Platform.OS === 'ios' ? 50 : 60) + insets.bottom-25,
           backgroundColor: '#ffffff',
           borderTopWidth: 0,
           elevation: 8,
@@ -32,8 +32,6 @@ const BottomTabNavigation = () => {
           shadowOffset: { width: 0, height: -2 },
           shadowOpacity: 0.1,
           shadowRadius: 4,
-          paddingBottom: insets.bottom > 0 ? insets.bottom - 10 : 0, 
-          paddingTop: 10,
         },
       }}
     >

@@ -310,7 +310,7 @@ const Reservation = ({ navigation }) => {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <View style={styles.header}>
         <BackBtn
           onPress={() => {
@@ -548,7 +548,7 @@ const Reservation = ({ navigation }) => {
           minimumDate={new Date()}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -558,7 +558,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
-    paddingTop: -36,
   },
   centerContainer: {
     flex: 1,

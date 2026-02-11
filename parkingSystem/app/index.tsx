@@ -6,31 +6,40 @@ import AppNavigator from "../navigation/AppNavigator";
 import CustomSplash from "../components/CustomSplash";
 import Esp32StatusBar from "../components/Esp32StatusBar";
 import { StripeProvider } from "@stripe/stripe-react-native";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { COLORS } from "../constants/theme";
+
+const SafeStatusBarWrapper = ({ children }: { children: React.ReactNode }) => {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={{ paddingTop: insets.top, zIndex: 100 }}>
+      {children}
+    </View>
+  );
+};
 
 export default function Page() {
   const [isSplashDone, setIsSplashDone] = useState(false);
 
   return (
     <SafeAreaProvider>
-      <View style={{ flex: 1, backgroundColor: COLORS.offWhite }}>
-        <StatusBar
-          style="dark"
-          backgroundColor="transparent"
-          translucent={true}
-        />
-        <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-          <StripeProvider publishableKey="pk_test_51Pk7TjDNxCaue7GcjYIcYlFNXHCFMsuZ5pgdNaTmt22EDVRSA6JRCjkx4n9IZvGnYHJVNdy9TcqykyxxQlfNdAlW00F7jRNbta">
-            <AuthProvider>
-              <Esp32Provider>
+      <View style={{ flex: 1, backgroundColor: COLORS.primary }}>
+        
+        <StatusBar style="light" backgroundColor="transparent" translucent={true} />
+
+        <StripeProvider publishableKey="pk_test_51Pk7TjDNxCaue7GcjYIcYlFNXHCFMsuZ5pgdNaTmt22EDVRSA6JRCjkx4n9IZvGnYHJVNdy9TcqykyxxQlfNdAlW00F7jRNbta">
+          <AuthProvider>
+            <Esp32Provider>
+              <SafeStatusBarWrapper>
                 <Esp32StatusBar />
-                <AppNavigator />
-              </Esp32Provider>
-            </AuthProvider>
-          </StripeProvider>
-        </SafeAreaView>
+              </SafeStatusBarWrapper>
+
+              <AppNavigator />
+            </Esp32Provider>
+          </AuthProvider>
+        </StripeProvider>
+
         {!isSplashDone && (
           <View style={StyleSheet.absoluteFill}>
             <CustomSplash onFinish={() => setIsSplashDone(true)} />
@@ -40,10 +49,3 @@ export default function Page() {
     </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.offWhite,
-  },
-});

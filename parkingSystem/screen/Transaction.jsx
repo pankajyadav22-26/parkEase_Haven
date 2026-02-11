@@ -154,7 +154,7 @@ const Transaction = ({ navigation }) => {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        <SafeAreaView>
+        <View>
           <View style={styles.headerContent}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
                <MaterialCommunityIcons name="arrow-left" size={24} color={COLORS.white} />
@@ -164,7 +164,7 @@ const Transaction = ({ navigation }) => {
                <MaterialCommunityIcons name={showFilters ? "filter-off" : "filter-variant"} size={24} color={COLORS.white} />
             </TouchableOpacity>
           </View>
-        </SafeAreaView>
+        </View>
       </LinearGradient>
 
       {showFilters && (
@@ -304,6 +304,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray100,
   },
   header: {
+    paddingTop: 9,
     paddingBottom: 20,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,

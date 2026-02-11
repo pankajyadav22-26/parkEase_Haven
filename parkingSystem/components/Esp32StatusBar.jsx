@@ -11,7 +11,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useEsp32 } from "../contexts/Esp32Context";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { COLORS, SHADOWS } from "../constants/theme";
+import { COLORS, SHADOWS, SIZES} from "../constants/theme";
 
 const Esp32StatusBar = () => {
   const { esp32Online, checking, checkESP32Status } = useEsp32();
@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 16,
     borderRadius: 20,
-    minWidth: 360,
+    minWidth: SIZES.width,
     minHeight: 10,
     ...SHADOWS.small,
   },

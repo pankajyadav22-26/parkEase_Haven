@@ -18,7 +18,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { backendUrl } from "../constants";
-import { COLORS, SHADOWS } from "../constants/theme";
+import { COLORS, SHADOWS, SIZES } from "../constants/theme";
 
 const { width } = Dimensions.get("window");
 const COLUMN_COUNT = 2;
@@ -79,15 +79,17 @@ const Home = ({ navigation }) => {
         }
 
         if (slot.currentStatus === "occupied") {
+          carAnim.current[index].setValue(140);
           Animated.timing(carAnim.current[index], {
             toValue: 0,
-            duration: 900,
+            friction: 6,
+            tension: 40,
             useNativeDriver: true,
           }).start();
         } else {
           carAnim.current[index].setValue(140);
         }
-      });
+      }, 500);
     } catch (error) {
       console.error("Failed to fetch slots:", error);
     } finally {
@@ -132,7 +134,7 @@ const Home = ({ navigation }) => {
         colors={[COLORS.primary, COLORS.primaryDark]}
         style={styles.headerGradient}
       >
-        <SafeAreaView style={styles.headerContent}>
+        <View style={styles.headerContent}>
           <View>
             <Text style={styles.greeting}>Welcome Back</Text>
             <Text style={styles.appName}>ParkEase Haven</Text>
@@ -144,7 +146,7 @@ const Home = ({ navigation }) => {
               style={styles.profileImg}
             />
           </TouchableOpacity>
-        </SafeAreaView>
+        </View>
 
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
@@ -198,6 +200,8 @@ const Home = ({ navigation }) => {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={fetchSlots} />
         }
+        contentContainerStyle={{ paddingBottom: 50 }}
+        showsVerticalScrollIndicator={false}
       >
         <View style={styles.grid}>
           {filteredSlots.map((slot, index) => (
@@ -262,9 +266,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray100,
   },
   headerGradient: {
+    paddingTop: 15,
     paddingBottom: 50,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 30,
+    height: SIZES.height * 0.2,
   },
   headerContent: {
     flexDirection: "row",

@@ -49,7 +49,6 @@ const CustomSplash = ({ onFinish }: Props) => {
 
         const images = [
           require("../assets/images/splashscreen_logo.png"),
-          require("../assets/images/bk.png"),
         ];
 
         const cacheImages = images.map((image) =>
@@ -223,7 +222,13 @@ const CustomSplash = ({ onFinish }: Props) => {
         ]}
       >
         <Text style={styles.titleText}>ParkEase Haven</Text>
-        <Text style={styles.subtitleText}>SMART PARKING SOLUTION</Text>
+        <Text 
+          style={styles.subtitleText} 
+          numberOfLines={1} 
+          adjustsFontSizeToFit={true}
+        >
+          SMART PARKING SOLUTION
+        </Text>
       </Animated.View>
     </Animated.View>
   );
@@ -258,6 +263,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: height * 0.15,
     alignItems: "center",
+    width: "90%", // FIX: Ensures container spans width so centering works
   },
   titleText: {
     color: "#FFFFFF",
@@ -265,6 +271,7 @@ const styles = StyleSheet.create({
     fontFamily: "SpaceMono-Regular",
     fontWeight: "bold",
     letterSpacing: 1,
+    textAlign: "center", // FIX: Ensure title centers too
   },
   subtitleText: {
     color: "#83C5BE",
@@ -273,5 +280,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     letterSpacing: 3,
     fontWeight: "600",
+    textAlign: "center", // FIX: Center alignment
+    width: "100%",       // FIX: Use full container width
   },
 });

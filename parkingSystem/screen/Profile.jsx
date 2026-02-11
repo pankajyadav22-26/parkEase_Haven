@@ -15,7 +15,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 
-import { COLORS, SHADOWS } from "../constants/theme";
+import { COLORS, SHADOWS, SIZES } from "../constants/theme";
 import { backendUrl } from "../constants";
 import { AuthContext } from "../contexts/AuthContext";
 
@@ -87,7 +87,7 @@ const Profile = ({ navigation }) => {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        <SafeAreaView>
+        <View>
           <View style={styles.profileSection}>
             <View style={styles.imageContainer}>
               <Image
@@ -105,7 +105,7 @@ const Profile = ({ navigation }) => {
               {user?.email || "Sign in to view profile"}
             </Text>
           </View>
-        </SafeAreaView>
+        </View>
       </LinearGradient>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -191,23 +191,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   header: {
-    paddingBottom: 30,
+    paddingBottom: SIZES.height * 0.05,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 30,
     ...SHADOWS.medium,
   },
   profileSection: {
     alignItems: "center",
-    marginTop: -20,
+    marginTop: 10,
+    height: SIZES.height * 0.23,
   },
   imageContainer: {
     position: "relative",
     marginBottom: 15,
   },
   profileImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: SIZES.width * 0.3,
+    height: SIZES.width * 0.3,
+    borderRadius: (SIZES.width * 0.3) / 2,
     borderWidth: 3,
     borderColor: COLORS.white,
   },
@@ -236,8 +237,8 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 20,
-    paddingBottom: 55,
-    paddingTop: 10,
+    paddingBottom: SIZES.height * 0.12,
+    paddingTop: SIZES.height * 0.01,
   },
   sectionTitle: {
     fontSize: 14,

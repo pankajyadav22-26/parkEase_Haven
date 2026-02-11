@@ -295,7 +295,7 @@ const UserReservations = ({ navigation }) => {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        <SafeAreaView>
+        <View>
           <View style={styles.headerContent}>
             <TouchableOpacity
               onPress={() => navigation.goBack()}
@@ -310,7 +310,7 @@ const UserReservations = ({ navigation }) => {
             <Text style={styles.headerTitle}>My Reservations</Text>
             <View style={{ width: 40}} />
           </View>
-        </SafeAreaView>
+        </View>
       </LinearGradient>
 
       <View style={styles.filterContainer}>
@@ -398,6 +398,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray100,
   },
   header: {
+    paddingTop: 9,
     paddingBottom: 20,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
