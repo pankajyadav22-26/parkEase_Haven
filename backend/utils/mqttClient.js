@@ -1,5 +1,5 @@
 const mqtt = require('mqtt');
-const redisClient = require('./redisClient');  // singleton redis client instance
+const { client: redisClient, setAsync } = require('./redisClient'); 
 
 const options = {
   username: process.env.MQTT_USERNAME,
@@ -9,25 +9,35 @@ const options = {
 
 const client = mqtt.connect(`mqtts://${process.env.MQTT_HOST}:${process.env.MQTT_PORT}`, options);
 
-let esp32LastSeen = null;
-
 client.on('connect', () => {
   console.log('Connected to HiveMQ MQTT Broker');
-  client.subscribe(['/esp32/status', '/esp32/gate/ack/#'], (err) => {
+  
+  client.subscribe(['/esp32/status/+', '/esp32/gate/ack/+'], (err) => {
     if (err) {
       console.error('Failed to subscribe:', err);
     } else {
-      console.log('Subscribed to /esp32/status and /esp32/gate/ack/#');
+      console.log('Subscribed to /esp32/status/+ and /esp32/gate/ack/+');
     }
   });
 });
 
 client.on('message', async (topic, message) => {
-  const msg = message.toString();
+  const payload = message.toString();
 
-  if (topic === '/esp32/status') {
-    if (msg === 'online') {
-      esp32LastSeen = new Date();
+  if (topic.startsWith('/esp32/status/')) {
+    const parts = topic.split('/'); 
+    const lotPrefix = parts[3]; 
+
+    const statusKey = `esp32_status_${lotPrefix}`;
+    
+    try {
+        if (setAsync) {
+            await setAsync(statusKey, payload, 'EX', 10);
+        } else {
+            await redisClient.setEx(statusKey, 10, payload);
+        }
+    } catch (err) {
+        console.error("Redis set error:", err);
     }
     return;
   }
@@ -35,7 +45,7 @@ client.on('message', async (topic, message) => {
   if (topic.startsWith('/esp32/gate/ack/')) {
     const reservationId = topic.split('/').pop();
     try {
-      await redisClient.publish(reservationId, msg);
+      await redisClient.publish(reservationId, payload);
     } catch (e) {
       console.error('Failed to publish ack to Redis:', e);
     }
@@ -46,15 +56,6 @@ client.on('error', (err) => {
   console.error('MQTT connection error:', err);
 });
 
-function isEsp32Online() {
-  if (!esp32LastSeen) return false;
-
-  const now = new Date();
-  const diff = now - esp32LastSeen;
-  return diff < 10000;
-}
-
 module.exports = {
-  client,
-  isEsp32Online
+  client
 };

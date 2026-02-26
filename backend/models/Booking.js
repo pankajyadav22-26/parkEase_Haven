@@ -6,6 +6,11 @@ const bookingSchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
+  parkingLotId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ParkingLot',
+    required: true
+  },
   name: String,
   carNumber: String,
   slot: String,
