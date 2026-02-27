@@ -14,13 +14,6 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { COLORS } from "../constants/theme";
 
-const SafeStatusBarWrapper = ({ children }: { children: React.ReactNode }) => {
-  const insets = useSafeAreaInsets();
-  return (
-    <View style={{ paddingTop: insets.top, zIndex: 100 }}>{children}</View>
-  );
-};
-
 export default function Page() {
   const [isSplashDone, setIsSplashDone] = useState(false);
 
