@@ -95,7 +95,10 @@ module.exports = {
 
         try {
             const parkingLot = await ParkingLot.findOne({ mqttTopicPrefix: lotPrefix });
-            if (!parkingLot) return res.status(404).json({ message: "Parking Lot hardware ID not found." });
+            if (!parkingLot) {
+                console.log(`[Error] Parking Lot with prefix ${lotPrefix} not found.`);
+                return res.status(404).json({ message: "Parking Lot hardware ID not found." });
+            }
 
             const bulkOps = updates.map(update => ({
                 updateOne: {
@@ -104,9 +107,11 @@ module.exports = {
                 }
             }));
 
-            await Slot.bulkWrite(bulkOps);
+            const result = await Slot.bulkWrite(bulkOps);
+            
             res.status(200).json({ message: "Slots updated successfully." });
         } catch (error) {
+            console.error("Error updating slots:", error);
             res.status(500).json({ message: "Error updating slots." });
         }
     }

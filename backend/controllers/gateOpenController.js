@@ -41,8 +41,8 @@ module.exports = {
             const distance = getDistanceFromLatLonInMeters(
                 parseFloat(location.latitude),
                 parseFloat(location.longitude),
-                parkingLot.location.coordinates[1],
-                parkingLot.location.coordinates[0]
+                parkingLot.location.coordinates[0],
+                parkingLot.location.coordinates[1]
             );
 
             if (distance > MAX_DISTANCE_METERS) {
