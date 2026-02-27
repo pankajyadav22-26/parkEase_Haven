@@ -3,12 +3,16 @@ import cv2
 import numpy as np
 import requests
 import json
+import logging
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 
 load_dotenv()
 
 app = Flask(__name__)
+
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:3000/api/slotoperations/updateSlotStatus")
 PORT = int(os.getenv("PORT", 5002))
@@ -23,12 +27,12 @@ CLASSES = ["background", "aeroplane", "bicycle", "bird", "boat",
 
 VALID_VEHICLES = ["car", "bus", "motorbike", "truck"]
 
-print("Loading Global AI Model...")
+print("[SYSTEM] Loading Global AI Model...")
 try:
     net = cv2.dnn.readNetFromCaffe(PROTOTXT, MODEL)
-    print("Model Loaded Successfully!")
+    print("[SYSTEM] Model Loaded Successfully!")
 except Exception as e:
-    print(f"CRITICAL ERROR: Could not load AI model. Check files. {e}")
+    print(f"[CRITICAL ERROR] Could not load AI model. Check files. {e}")
 
 def get_rois_for_lot(lot_prefix):
     """Loads the specific ROI JSON file for the requested parking lot."""
@@ -62,13 +66,17 @@ def analyze_slot_with_ai(slot_image):
 def process_image():
     lot_prefix = request.form.get('lotPrefix')
     if not lot_prefix:
+        print("[Error] Missing lotPrefix in incoming request.")
         return jsonify({"error": "Missing lotPrefix in request"}), 400
+
+    print(f"[Vision AI] Analyzing slots for: {lot_prefix}")
 
     img_bytes = None
     if 'image' in request.files:
         img_bytes = request.files['image'].read()
 
     if not img_bytes:
+        print(f"[Error] No image uploaded for {lot_prefix}.")
         return jsonify({"error": "No image uploaded"}), 400
 
     SLOT_ROIS = get_rois_for_lot(lot_prefix)
@@ -110,14 +118,14 @@ def process_image():
         if BACKEND_URL:
             res = requests.post(BACKEND_URL, json=payload, timeout=5)
             if res.status_code == 200:
-                print(f"Backend updated successfully for {lot_prefix}!")
+                print(f"[Backend] Successfully updated database for {lot_prefix}")
             else:
-                print(f"Backend returned status {res.status_code}: {res.text}")
+                print(f"[Backend Error] Status {res.status_code}: {res.text}")
     except Exception as e:
-        print(f"Backend Connection Failed: {e}")
+        print(f"[Backend Error] Connection Failed: {e}")
 
     return jsonify({"lotPrefix": lot_prefix, "updates": results})
 
 if __name__ == '__main__':
-    print("[SYSTEM] Global AI Engine Online")
+    print(f"[SYSTEM] Global AI Engine Online (Port {PORT})")
     app.run(host='0.0.0.0', port=PORT)
