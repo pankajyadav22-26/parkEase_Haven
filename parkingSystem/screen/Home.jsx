@@ -10,15 +10,23 @@ import {
   StatusBar,
   TouchableOpacity,
 } from "react-native";
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useContext,
+} from "react";
 import axios from "axios";
 import { useIsFocused } from "@react-navigation/native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { backendUrl } from "../constants";
 import { COLORS, SHADOWS, SIZES } from "../constants/theme";
+
+import { ParkingContext } from "../contexts/ParkingContext";
 
 const { width } = Dimensions.get("window");
 const COLUMN_COUNT = 2;
@@ -30,6 +38,8 @@ const SLOT_WIDTH =
 const FILTER_TYPES = ["All", "Available", "Occupied", "Reserved"];
 
 const Home = ({ navigation }) => {
+  const { selectedLot } = useContext(ParkingContext);
+
   const [slots, setSlots] = useState([]);
   const [filteredSlots, setFilteredSlots] = useState([]);
   const [activeFilter, setActiveFilter] = useState("All");
@@ -55,11 +65,22 @@ const Home = ({ navigation }) => {
   };
 
   const fetchSlots = useCallback(async () => {
+    if (!selectedLot) return;
+
     try {
       setRefreshing(true);
+      const res = await axios.get(
+        `${backendUrl}/api/slotoperations/fetchSlot`,
+        {
+          params: { parkingLotId: selectedLot._id },
+        },
+      );
 
-      const res = await axios.get(`${backendUrl}/api/slotoperations/fetchSlot`);
-      const fetchedSlots = res.data.slots || [];
+      let fetchedSlots = res.data.slots || [];
+
+      fetchedSlots = fetchedSlots.sort((a, b) =>
+        a.slotName.localeCompare(b.slotName, undefined, { numeric: true }),
+      );
 
       const newStats = fetchedSlots.reduce(
         (acc, slot) => {
@@ -95,10 +116,10 @@ const Home = ({ navigation }) => {
     } finally {
       setRefreshing(false);
     }
-  }, [activeFilter]);
+  }, [activeFilter, selectedLot]);
 
   useEffect(() => {
-    if (isFocused) {
+    if (isFocused && selectedLot) {
       fetchSlots();
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -106,7 +127,7 @@ const Home = ({ navigation }) => {
         useNativeDriver: true,
       }).start();
     }
-  }, [isFocused]);
+  }, [isFocused, selectedLot]);
 
   const handleFilterPress = (filter) => {
     setActiveFilter(filter);
@@ -126,18 +147,48 @@ const Home = ({ navigation }) => {
     }
   };
 
+  if (!selectedLot) {
+    return (
+      <View style={[styles.container, styles.fallbackContainer]}>
+        <MaterialCommunityIcons
+          name="map-marker-off"
+          size={64}
+          color={COLORS.gray400}
+        />
+        <Text style={styles.fallbackTitle}>No Location Selected</Text>
+        <Text style={styles.fallbackSub}>
+          Please return to the map to select a parking lot.
+        </Text>
+        <TouchableOpacity
+          style={styles.fallbackBtn}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.fallbackBtnText}>Go to Map</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
-
       <LinearGradient
         colors={[COLORS.primary, COLORS.primaryDark]}
         style={styles.headerGradient}
       >
         <View style={styles.headerContent}>
-          <View>
-            <Text style={styles.greeting}>Welcome Back</Text>
-            <Text style={styles.appName}>ParkEase Haven</Text>
+          <View style={styles.headerLeftInfo}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={styles.backButton}
+            >
+              <Ionicons name="chevron-back" size={28} color={COLORS.white} />
+            </TouchableOpacity>
+            <View>
+              <Text style={styles.greeting}>{selectedLot.name}</Text>
+              <Text style={styles.appName}>
+                Base: ₹{selectedLot.basePrice}/hr
+              </Text>
+            </View>
           </View>
 
           <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
@@ -172,8 +223,13 @@ const Home = ({ navigation }) => {
         </View>
       </LinearGradient>
 
-      <View style={styles.filterContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      {/* FILTER BAR */}
+      <View style={[styles.filterContainer, { marginTop: 55 }]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterScroll}
+        >
           {FILTER_TYPES.map((filter) => (
             <TouchableOpacity
               key={filter}
@@ -266,26 +322,33 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray100,
   },
   headerGradient: {
-    paddingTop: 15,
+    paddingTop: 45, // adjusted for SafeArea
     paddingBottom: 50,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 30,
-    height: SIZES.height * 0.2,
+    height: SIZES.height * 0.22, // slightly taller to accommodate the back button
   },
   headerContent: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: PADDING,
-    paddingTop: -25,
+  },
+  headerLeftInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  backButton: {
+    marginRight: 10,
+    padding: 5,
   },
   greeting: {
-    fontSize: 14,
-    color: "rgba(255,255,255,0.8)",
-    fontFamily: "SpaceMono-Regular",
+    fontSize: 16,
+    color: "rgba(255,255,255,0.9)",
+    fontWeight: "600",
   },
   appName: {
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: "bold",
     color: COLORS.white,
     letterSpacing: 0.5,
@@ -329,13 +392,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray200,
   },
   filterContainer: {
-    marginTop: 50,
-    marginBottom: 6,
-    marginHorizontal: 4,
+    marginBottom: 10,
   },
   filterScroll: {
     paddingHorizontal: PADDING,
-    gap: 1,
+    gap: 8,
   },
   chip: {
     paddingHorizontal: 20,
@@ -344,7 +405,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderWidth: 1,
     borderColor: COLORS.gray300,
-    marginHorizontal: 3,
   },
   activeChip: {
     backgroundColor: COLORS.primary,
@@ -356,9 +416,6 @@ const styles = StyleSheet.create({
   },
   activeChipText: {
     color: COLORS.white,
-  },
-  scrollContent: {
-    paddingBottom: 100,
   },
   grid: {
     flexDirection: "row",
@@ -440,18 +497,34 @@ const styles = StyleSheet.create({
     height: "85%",
     marginBottom: 10,
   },
-  fab: {
-    position: "absolute",
-    bottom: 30,
-    right: 20,
-    borderRadius: 30,
-    ...SHADOWS.medium,
-  },
-  fabGradient: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+  fallbackContainer: {
     justifyContent: "center",
     alignItems: "center",
+    padding: 20,
+  },
+  fallbackTitle: {
+    fontSize: 22,
+    fontWeight: "bold",
+    marginTop: 20,
+    color: COLORS.gray700,
+  },
+  fallbackSub: {
+    fontSize: 14,
+    color: COLORS.gray500,
+    textAlign: "center",
+    marginTop: 10,
+    marginBottom: 30,
+  },
+  fallbackBtn: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 30,
+    paddingVertical: 15,
+    borderRadius: 25,
+    ...SHADOWS.medium,
+  },
+  fallbackBtnText: {
+    color: COLORS.white,
+    fontWeight: "bold",
+    fontSize: 16,
   },
 });

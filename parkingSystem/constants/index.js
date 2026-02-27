@@ -1,7 +1,7 @@
 
 import { COLORS,  SIZES, images, SHADOWS} from "./theme";
 
-const backendUrl = "https://parkease-haven.onrender.com";
+const backendUrl = "http://192.168.1.35:3000";
 const GATE_COORDS = {
     latitude: 28.8167148,
     longitude: 77.1330412,

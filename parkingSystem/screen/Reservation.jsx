@@ -10,7 +10,7 @@ import {
   StatusBar,
   Dimensions,
 } from "react-native";
-import React, { useState, useContext, useCallback } from "react";
+import React, { useState, useContext, useCallback, useMemo, useEffect } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { AuthContext } from "../contexts/AuthContext";
@@ -18,7 +18,7 @@ import { format, differenceInHours, differenceInMinutes } from "date-fns";
 import { backendUrl } from "../constants";
 import { useStripe } from "@stripe/stripe-react-native";
 import axios from "axios";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { COLORS, SIZES, SHADOWS } from "../constants/theme";
@@ -26,10 +26,31 @@ import Button from "../components/Button";
 import BackBtn from "../components/BackBtn";
 import InputField from "../components/InputField";
 
+import { ParkingContext } from "../contexts/ParkingContext";
+
 const { width } = Dimensions.get("window");
+
+// Helper function to calculate distance between two coordinates in km (Haversine Formula)
+const getDistance = (lat1, lon1, lat2, lon2) => {
+  if (!lat1 || !lon1 || !lat2 || !lon2) return Infinity;
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
 
 const Reservation = ({ navigation }) => {
   const { user, isLoggedIn } = useContext(AuthContext);
+  
+  // NEW: Get parkingLots and userLocation to calculate distances
+  const { parkingLots, selectedLot, setSelectedLot, userLocation } = useContext(ParkingContext);
 
   const [currentStep, setCurrentStep] = useState(1);
 
@@ -52,6 +73,34 @@ const Reservation = ({ navigation }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
+
+  // NEW: Sort lots by distance whenever parkingLots or userLocation changes
+  const sortedLots = useMemo(() => {
+    if (!parkingLots || parkingLots.length === 0) return [];
+    
+    const lotsWithDistance = parkingLots.map((lot) => {
+      // Assuming DB saves coordinates as [Latitude, Longitude] based on your Postman logs
+      const lotLat = lot.location.coordinates[0]; 
+      const lotLon = lot.location.coordinates[1];
+      
+      const distance = userLocation 
+        ? getDistance(userLocation.latitude, userLocation.longitude, lotLat, lotLon)
+        : Infinity;
+        
+      return { ...lot, distance };
+    });
+
+    // Sort ascending (closest first)
+    return lotsWithDistance.sort((a, b) => a.distance - b.distance);
+  }, [parkingLots, userLocation]);
+
+  // NEW: Auto-select the closest lot if none is selected
+  useEffect(() => {
+    if (!selectedLot && sortedLots.length > 0) {
+      setSelectedLot(sortedLots[0]);
+    }
+  }, [sortedLots, selectedLot]);
+
 
   const resetForm = () => {
     setCurrentStep(1);
@@ -125,24 +174,33 @@ const Reservation = ({ navigation }) => {
       Alert.alert("Invalid Time", "End time must be after Start time.");
       return;
     }
+    if (!selectedLot) {
+      Alert.alert("No Location", "Please select a parking lot.");
+      return;
+    }
 
     setIsLoading(true);
     try {
       const priceRes = await axios.post(
-        `${backendUrl}/api/booking/calculate-price`,
+        `${backendUrl}/api/booking/calculate-price`, 
         {
           startTime,
           endTime,
+          parkingLotId: selectedLot._id 
         },
       );
       setPayment(priceRes.data.totalAmount || 0);
 
       const slotRes = await fetch(
-        `${backendUrl}/api/slotoperations/fetchAvailableSlot`,
+        `${backendUrl}/api/slotoperations/fetchAvailableSlot`, 
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ startTime, endTime }),
+          body: JSON.stringify({ 
+            startTime, 
+            endTime,
+            parkingLotId: selectedLot._id 
+          }),
         },
       );
       const slotData = await slotRes.json();
@@ -230,6 +288,7 @@ const Reservation = ({ navigation }) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: user._id,
+          parkingLotId: selectedLot._id,
           name,
           carNumber,
           slot: selectedSlot,
@@ -244,6 +303,7 @@ const Reservation = ({ navigation }) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           slotName: selectedSlot,
+          parkingLotId: selectedLot._id,
           userId: user._id,
           startTime,
           endTime,
@@ -342,7 +402,43 @@ const Reservation = ({ navigation }) => {
         >
           {currentStep === 1 && (
             <View style={styles.stepContainer}>
-              <Text style={styles.sectionTitle}>Select Duration</Text>
+              
+              {/* NEW: Horizontal Location Picker */}
+              <Text style={styles.sectionTitle}>Select Location</Text>
+              <View style={styles.locationListContainer}>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 10, paddingRight: 20 }}
+                >
+                  {sortedLots.map((lot) => {
+                    const isSelected = selectedLot?._id === lot._id;
+                    return (
+                      <TouchableOpacity
+                        key={lot._id}
+                        style={[styles.locationChip, isSelected && styles.activeLocationChip]}
+                        onPress={() => setSelectedLot(lot)}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                          <Ionicons 
+                            name="location-sharp" 
+                            size={14} 
+                            color={isSelected ? COLORS.white : COLORS.primary} 
+                          />
+                          <Text style={[styles.locationChipName, isSelected && styles.activeLocationChipText]} numberOfLines={1}>
+                            {lot.name}
+                          </Text>
+                        </View>
+                        <Text style={[styles.locationChipDist, isSelected && styles.activeLocationChipText]}>
+                          {lot.distance === Infinity ? "Calculating..." : `${lot.distance.toFixed(1)} km away`}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              <Text style={[styles.sectionTitle, { marginTop: 15 }]}>Select Duration</Text>
 
               <View style={styles.timeCard}>
                 <TouchableOpacity
@@ -413,7 +509,7 @@ const Reservation = ({ navigation }) => {
                 </Text>
               </View>
 
-              <View style={{ flex: 1 }} />
+              <View style={{ flex: 1, minHeight: 30 }} />
               <Button
                 title="Find Spots"
                 onPress={proceedToSlots}
@@ -424,7 +520,7 @@ const Reservation = ({ navigation }) => {
 
           {currentStep === 2 && (
             <View style={styles.stepContainer}>
-              <Text style={styles.sectionTitle}>Available Slots</Text>
+              <Text style={styles.sectionTitle}>Available Slots at {selectedLot?.name}</Text>
 
               <View style={styles.slotsGrid}>
                 {availableSlots.length > 0 ? (
@@ -470,7 +566,7 @@ const Reservation = ({ navigation }) => {
                 )}
               </View>
 
-              <View style={{ flex: 1 }} />
+              <View style={{ flex: 1, minHeight: 40 }} />
               <Button
                 title={selectedSlot ? `Book ${selectedSlot}` : "Select a Slot"}
                 onPress={proceedToPayment}
@@ -483,6 +579,10 @@ const Reservation = ({ navigation }) => {
             <View style={styles.stepContainer}>
               <View style={styles.billCard}>
                 <Text style={styles.billTitle}>Reservation Summary</Text>
+                <View style={styles.billRow}>
+                  <Text style={styles.billLabel}>Location</Text>
+                  <Text style={[styles.billValue, {maxWidth: '60%', textAlign: 'right'}]}>{selectedLot?.name}</Text>
+                </View>
                 <View style={styles.billRow}>
                   <Text style={styles.billLabel}>Spot</Text>
                   <Text style={styles.billValue}>{selectedSlot}</Text>
@@ -527,7 +627,7 @@ const Reservation = ({ navigation }) => {
                 onChangeText={setCarNumber}
               />
 
-              <View style={{ flex: 1 }} />
+              <View style={{ flex: 1, minHeight: 30 }} />
               <Button
                 title={`Pay ₹${payment}`}
                 onPress={handlePayment}
@@ -585,7 +685,7 @@ const styles = StyleSheet.create({
   },
   progressContainer: {
     paddingHorizontal: 20,
-    marginBottom: 20,
+    marginBottom: 10, // Adjusted margin
   },
   progressBar: {
     height: 4,
@@ -621,14 +721,49 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "bold",
     color: COLORS.text,
-    marginBottom: 15,
+    marginBottom: 10,
+  },
+  // NEW: Location List Styles
+  locationListContainer: {
+    marginBottom: 10,
+    marginHorizontal: -20, // To allow scrolling edge-to-edge
+    paddingHorizontal: 20,
+  },
+  locationChip: {
+    backgroundColor: COLORS.surface,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+    width: 160,
+    ...SHADOWS.light,
+  },
+  activeLocationChip: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  locationChipName: {
+    fontWeight: "bold",
+    color: COLORS.text,
+    fontSize: 14,
+    marginLeft: 4,
+    flexShrink: 1,
+  },
+  locationChipDist: {
+    fontSize: 12,
+    color: COLORS.gray500,
+    marginTop: 2,
+  },
+  activeLocationChipText: {
+    color: COLORS.white,
   },
   timeCard: {
     backgroundColor: COLORS.surface,
     borderRadius: SIZES.radius,
     padding: 5,
     ...SHADOWS.light,
-    marginBottom: 20,
+    marginBottom: 15, // Adjusted margin
   },
   timeRow: {
     flexDirection: "row",
@@ -665,6 +800,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primaryLight,
     padding: 12,
     borderRadius: 8,
+    marginBottom: 10, // Added margin
   },
   infoText: {
     marginLeft: 8,

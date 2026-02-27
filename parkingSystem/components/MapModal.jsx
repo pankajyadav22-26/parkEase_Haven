@@ -3,13 +3,13 @@ import { Modal, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Dim
 import MapView, { Marker, Circle, PROVIDER_DEFAULT } from "react-native-maps";
 import * as Location from "expo-location";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { GATE_COORDS } from "../constants/index";
 import { COLORS, SIZES, SHADOWS } from "../constants/theme";
 
 const { width, height } = Dimensions.get("window");
 const MAX_DISTANCE_METERS = 200;
 
 const getDistanceInMeters = (lat1, lon1, lat2, lon2) => {
+  if (!lat1 || !lon1 || !lat2 || !lon2) return Infinity;
   const R = 6371000;
   const dLat = (lat2 - lat1) * (Math.PI / 180);
   const dLon = (lon2 - lon1) * (Math.PI / 180);
@@ -22,7 +22,8 @@ const getDistanceInMeters = (lat1, lon1, lat2, lon2) => {
   return R * c;
 };
 
-const MapModal = ({ visible, onClose }) => {
+// NEW: Accepts targetCoords prop { latitude, longitude, name }
+const MapModal = ({ visible, onClose, targetCoords }) => {
   const [userCoords, setUserCoords] = useState(null);
   const [distance, setDistance] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -30,6 +31,9 @@ const MapModal = ({ visible, onClose }) => {
   const mapRef = useRef(null);
 
   const fetchLocationAndUpdateDistance = async () => {
+    // Safety check: if we don't know where the gate is, we can't calculate distance
+    if (!targetCoords) return;
+
     try {
       const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       const userLocation = {
@@ -38,16 +42,17 @@ const MapModal = ({ visible, onClose }) => {
       };
       setUserCoords(userLocation);
 
+      // Calculate distance to the DYNAMIC target coordinates
       const dist = getDistanceInMeters(
         userLocation.latitude,
         userLocation.longitude,
-        GATE_COORDS.latitude,
-        GATE_COORDS.longitude
+        targetCoords.latitude,
+        targetCoords.longitude
       );
       setDistance(dist.toFixed(0));
       
       if (mapRef.current && visible) {
-          mapRef.current.fitToCoordinates([userLocation, GATE_COORDS], {
+          mapRef.current.fitToCoordinates([userLocation, targetCoords], {
             edgePadding: { top: 100, right: 50, bottom: 200, left: 50 },
             animated: true,
           });
@@ -59,7 +64,7 @@ const MapModal = ({ visible, onClose }) => {
   };
 
   useEffect(() => {
-    if (visible) {
+    if (visible && targetCoords) {
       (async () => {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") {
@@ -81,7 +86,7 @@ const MapModal = ({ visible, onClose }) => {
     return () => {
       clearInterval(intervalRef.current);
     };
-  }, [visible]);
+  }, [visible, targetCoords]);
 
   const isInside = distance && parseFloat(distance) <= MAX_DISTANCE_METERS;
 
@@ -94,10 +99,10 @@ const MapModal = ({ visible, onClose }) => {
            <MaterialCommunityIcons name="close" size={24} color={COLORS.text} />
         </TouchableOpacity>
 
-        {loading ? (
+        {loading || !targetCoords ? (
           <View style={styles.loaderWrapper}>
             <ActivityIndicator size="large" color={COLORS.primary} />
-            <Text style={styles.loadingText}>Locating you...</Text>
+            <Text style={styles.loadingText}>Locating gate and you...</Text>
           </View>
         ) : (
           <>
@@ -106,22 +111,22 @@ const MapModal = ({ visible, onClose }) => {
               style={styles.map}
               provider={PROVIDER_DEFAULT}
               initialRegion={{
-                latitude: GATE_COORDS.latitude,
-                longitude: GATE_COORDS.longitude,
+                latitude: targetCoords.latitude,
+                longitude: targetCoords.longitude,
                 latitudeDelta: 0.005,
                 longitudeDelta: 0.005,
               }}
               showsUserLocation={true}
               showsMyLocationButton={false}
             >
-              <Marker coordinate={GATE_COORDS} title="Parking Gate">
+              <Marker coordinate={targetCoords} title={targetCoords.name || "Parking Gate"}>
                  <View style={styles.gateMarker}>
                     <MaterialCommunityIcons name="boom-gate" size={20} color={COLORS.white} />
                  </View>
               </Marker>
               
               <Circle
-                center={GATE_COORDS}
+                center={targetCoords}
                 radius={MAX_DISTANCE_METERS}
                 strokeColor={isInside ? "rgba(46, 125, 50, 0.5)" : "rgba(211, 47, 47, 0.5)"}
                 fillColor={isInside ? "rgba(46, 125, 50, 0.1)" : "rgba(211, 47, 47, 0.1)"}
@@ -149,7 +154,7 @@ const MapModal = ({ visible, onClose }) => {
                <View style={styles.divider} />
                
                <View style={styles.distanceRow}>
-                  <Text style={styles.distanceLabel}>Current Distance</Text>
+                  <Text style={styles.distanceLabel}>Distance to {targetCoords.name || 'Gate'}</Text>
                   <Text style={[styles.distanceValue, { color: isInside ? COLORS.success : COLORS.error }]}>
                      {distance || '---'} m
                   </Text>
@@ -175,8 +180,8 @@ const styles = StyleSheet.create({
   },
   closeBtn: {
     position: 'absolute',
-    top: 10,
-    left: 10,
+    top: 50, // Moved down slightly to avoid iOS dynamic island / Android notches
+    left: 20,
     zIndex: 10,
     backgroundColor: COLORS.white,
     width: 44,
@@ -252,6 +257,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.gray600,
     fontWeight: '500',
+    maxWidth: '70%',
   },
   distanceValue: {
     fontSize: 24,

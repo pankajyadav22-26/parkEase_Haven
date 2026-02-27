@@ -8,6 +8,7 @@ import {
   SignUp,
   UserReservations,
   Transaction,
+  Home,
 } from "../screen/index";
 
 const Stack = createNativeStackNavigator();
@@ -39,6 +40,14 @@ export default function AppNavigator() {
         name="SignUp"
         component={SignUp}
         options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="SlotGrid"
+        component={Home}
+        options={{
+          headerShown: false,
+          headerBackTitle: "Map",
+        }}
       />
       <Stack.Screen
         name="reserve"
