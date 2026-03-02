@@ -1,5 +1,5 @@
 const mqtt = require('mqtt');
-const redisClient = require('./redisClient');  // singleton redis client instance
+const redisClient = require('./redisClient');
 
 const options = {
   username: process.env.MQTT_USERNAME,
@@ -9,25 +9,26 @@ const options = {
 
 const client = mqtt.connect(`mqtts://${process.env.MQTT_HOST}:${process.env.MQTT_PORT}`, options);
 
-let esp32LastSeen = null;
+const esp32LastSeenMap = {};
 
 client.on('connect', () => {
   console.log('Connected to HiveMQ MQTT Broker');
-  client.subscribe(['/esp32/status', '/esp32/gate/ack/#'], (err) => {
+  client.subscribe(['/esp32/status/+', '/esp32/gate/ack/#'], (err) => {
     if (err) {
       console.error('Failed to subscribe:', err);
     } else {
-      console.log('Subscribed to /esp32/status and /esp32/gate/ack/#');
+      console.log('Subscribed to /esp32/status/+ and /esp32/gate/ack/#');
     }
   });
 });
 
 client.on('message', async (topic, message) => {
   const msg = message.toString();
-
-  if (topic === '/esp32/status') {
+  if (topic.startsWith('/esp32/status/')) {
+    const lotPrefix = topic.split('/').pop();
+    
     if (msg === 'online') {
-      esp32LastSeen = new Date();
+      esp32LastSeenMap[lotPrefix] = new Date();
     }
     return;
   }
@@ -46,11 +47,12 @@ client.on('error', (err) => {
   console.error('MQTT connection error:', err);
 });
 
-function isEsp32Online() {
-  if (!esp32LastSeen) return false;
+function isEsp32Online(prefix) {
+  const lastSeen = esp32LastSeenMap[prefix];
+  if (!lastSeen) return false;
 
   const now = new Date();
-  const diff = now - esp32LastSeen;
+  const diff = now - lastSeen;
   return diff < 10000;
 }
 

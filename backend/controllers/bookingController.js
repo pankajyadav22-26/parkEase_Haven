@@ -7,15 +7,16 @@ const myCache = new NodeCache({ stdTTL: 300 });
 
 module.exports = {
   saveBooking: async (req, res) => {
-    const { userId, name, carNumber, slot, startTime, endTime, amount } = req.body;
+    const { userId, parkingLotId, name, carNumber, slot, startTime, endTime, amount } = req.body;
 
-    if (!userId || !name || !carNumber || !slot || !startTime || !endTime || !amount) {
+    if (!userId || !parkingLotId || !name || !carNumber || !slot || !startTime || !endTime || !amount) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
     try {
       const booking = new Booking({
         userId,
+        parkingLotId,
         name,
         carNumber,
         slot,
@@ -28,11 +29,12 @@ module.exports = {
 
       try {
         const now = new Date();
-        const totalSlots = await Slot.countDocuments();
-        const occupiedSlots = await Slot.countDocuments({ slotStatus: "occupied" });
+        const totalSlots = await Slot.countDocuments({ parkingLotId });
+        const occupiedSlots = await Slot.countDocuments({ parkingLotId, slotStatus: "occupied" });
 
         await PricingDataset.create({
           timestamp: now,
+          parkingLotId,
           hourOfDay: now.getHours(),
           dayOfWeek: now.getDay(),
           isWeekend: (now.getDay() === 0 || now.getDay() === 6),
@@ -54,20 +56,21 @@ module.exports = {
   },
   fetchBooking: async (req, res) => {
     try {
-      const bookings = await Booking.find({ userId: req.params.userId });
+      const bookings = await Booking.find({ userId: req.params.userId })
+        .populate('parkingLotId', 'name address location mqttTopicPrefix');
       res.json(bookings);
     } catch (err) {
       res.status(500).json({ error: 'Something went wrong' });
     }
   },
   calculatePrice: async (req, res) => {
-    const { startTime, endTime } = req.body;
+    const { startTime, endTime, parkingLotId } = req.body;
 
-    if (!startTime || !endTime) {
-      return res.status(400).json({ message: "Start and End time required" });
+    if (!startTime || !endTime || !parkingLotId) {
+      return res.status(400).json({ message: "Start time, End time, and parkingLotId required" });
     }
 
-    const cacheKey = `price_${startTime}_${endTime}`;
+    const cacheKey = `price_${parkingLotId}_${startTime}_${endTime}`;
     const cachedData = myCache.get(cacheKey);
     if (cachedData) {
       return res.status(200).json(cachedData);
@@ -81,8 +84,10 @@ module.exports = {
       if (durationHours <= 0) {
         return res.status(400).json({ message: "Invalid duration" });
       }
-      const totalSlots = await Slot.countDocuments();
+
+      const totalSlots = await Slot.countDocuments({ parkingLotId });
       const occupiedSlots = await Slot.countDocuments({
+        parkingLotId,
         reservations: {
           $elemMatch: {
             startTime: { $lt: end },
@@ -101,7 +106,7 @@ module.exports = {
       };
 
       const mlServiceUrl = process.env.ML_SERVICE_URL || 'http://localhost:5001';
-      let hourlyRate = 51;
+      let hourlyRate = 50;
 
       try {
         const response = await axios.post(`${mlServiceUrl}/predict_price`, mlPayload);
@@ -114,7 +119,7 @@ module.exports = {
 
       const totalPrice = Math.round(hourlyRate * durationHours);
 
-      responseData = {
+      const responseData = {
         baseRate: hourlyRate,
         totalAmount: totalPrice,
         occupancy: occupancyRate,

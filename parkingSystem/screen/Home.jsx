@@ -4,32 +4,39 @@ import {
   View,
   Dimensions,
   Animated,
-  Image,
   ScrollView,
   RefreshControl,
   StatusBar,
   TouchableOpacity,
 } from "react-native";
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useContext,
+} from "react";
 import axios from "axios";
 import { useIsFocused } from "@react-navigation/native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
 
 import { backendUrl } from "../constants";
-import { COLORS, SHADOWS, SIZES } from "../constants/theme";
+import { COLORS, SHADOWS, SPACING } from "../constants/theme";
+import { ParkingContext } from "../contexts/ParkingContext";
 
 const { width } = Dimensions.get("window");
-const COLUMN_COUNT = 2;
-const SLOT_GAP = 12;
 const PADDING = 20;
-const SLOT_WIDTH =
-  (width - PADDING * 2 - SLOT_GAP * (COLUMN_COUNT - 1)) / COLUMN_COUNT;
+const SLOT_WIDTH = (width - PADDING * 2 - 40) / 2;
 
 const FILTER_TYPES = ["All", "Available", "Occupied", "Reserved"];
 
 const Home = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
+  const { selectedLot } = useContext(ParkingContext);
+
   const [slots, setSlots] = useState([]);
   const [filteredSlots, setFilteredSlots] = useState([]);
   const [activeFilter, setActiveFilter] = useState("All");
@@ -41,7 +48,7 @@ const Home = ({ navigation }) => {
   });
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const carAnim = useRef([]);
+  const pulseAnim = useRef(new Animated.Value(0.5)).current;
   const isFocused = useIsFocused();
 
   const applyFilter = (filter, data) => {
@@ -55,15 +62,24 @@ const Home = ({ navigation }) => {
   };
 
   const fetchSlots = useCallback(async () => {
+    if (!selectedLot) return;
     try {
       setRefreshing(true);
+      const res = await axios.get(
+        `${backendUrl}/api/slotoperations/fetchSlot`,
+        {
+          params: { parkingLotId: selectedLot._id },
+        },
+      );
 
-      const res = await axios.get(`${backendUrl}/api/slotoperations/fetchSlot`);
-      const fetchedSlots = res.data.slots || [];
+      let fetchedSlots = res.data.slots || [];
+      fetchedSlots = fetchedSlots.sort((a, b) =>
+        a.slotName.localeCompare(b.slotName, undefined, { numeric: true }),
+      );
 
       const newStats = fetchedSlots.reduce(
         (acc, slot) => {
-          acc[slot.currentStatus]++;
+          if (acc[slot.currentStatus] !== undefined) acc[slot.currentStatus]++;
           return acc;
         },
         { available: 0, occupied: 0, reserved: 0 },
@@ -72,187 +88,260 @@ const Home = ({ navigation }) => {
       setStats(newStats);
       setSlots(fetchedSlots);
       applyFilter(activeFilter, fetchedSlots);
-
-      fetchedSlots.forEach((slot, index) => {
-        if (!carAnim.current[index]) {
-          carAnim.current[index] = new Animated.Value(140);
-        }
-
-        if (slot.currentStatus === "occupied") {
-          carAnim.current[index].setValue(140);
-          Animated.timing(carAnim.current[index], {
-            toValue: 0,
-            friction: 6,
-            tension: 40,
-            useNativeDriver: true,
-          }).start();
-        } else {
-          carAnim.current[index].setValue(140);
-        }
-      }, 500);
     } catch (error) {
       console.error("Failed to fetch slots:", error);
     } finally {
       setRefreshing(false);
     }
-  }, [activeFilter]);
+  }, [activeFilter, selectedLot]);
 
   useEffect(() => {
-    if (isFocused) {
+    if (isFocused && selectedLot) {
       fetchSlots();
+
+      // Entrance Fade
+      fadeAnim.setValue(0);
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 800,
+        duration: 600,
         useNativeDriver: true,
       }).start();
+
+      // Breathing animation for available slots
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 0.5,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+        ]),
+      ).start();
     }
-  }, [isFocused]);
+  }, [isFocused, selectedLot]);
 
   const handleFilterPress = (filter) => {
+    Haptics.selectionAsync();
     setActiveFilter(filter);
     applyFilter(filter, slots);
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "available":
-        return COLORS.success;
-      case "reserved":
-        return COLORS.warning;
-      case "occupied":
-        return COLORS.error;
-      default:
-        return COLORS.gray500;
-    }
-  };
+  if (!selectedLot) return null;
+
+  const capacity = stats.available + stats.occupied + stats.reserved;
+  const occupancyRate =
+    capacity === 0 ? 0 : Math.round((stats.occupied / capacity) * 100);
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+      <StatusBar
+        barStyle="light-content"
+        translucent
+        backgroundColor="transparent"
+      />
 
+      {/* Deep Gradient Header */}
       <LinearGradient
         colors={[COLORS.primary, COLORS.primaryDark]}
-        style={styles.headerGradient}
+        style={[styles.headerGradient, { paddingTop: insets.top + SPACING.s }]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
       >
         <View style={styles.headerContent}>
-          <View>
-            <Text style={styles.greeting}>Welcome Back</Text>
-            <Text style={styles.appName}>ParkEase Haven</Text>
-          </View>
-
-          <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
-            <Image
-              source={require("../assets/images/profile.jpeg")}
-              style={styles.profileImg}
-            />
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backBtn}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="chevron-back" size={24} color={COLORS.white} />
           </TouchableOpacity>
+          <View style={styles.headerTextWrap}>
+            <Text style={styles.headerSubtitle}>SMART SENSOR NETWORK</Text>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {selectedLot.name}
+            </Text>
+          </View>
+          <View style={{ width: 40 }} />
         </View>
 
-        <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: COLORS.success }]}>
-              {stats.available}
-            </Text>
-            <Text style={styles.statLabel}>Free</Text>
+        {/* High-End Dashboard Stats */}
+        <View style={styles.dashboardStats}>
+          <View style={styles.statMain}>
+            <Text style={styles.statMainLabel}>AVAILABLE SPOTS</Text>
+            <Text style={styles.statMainValue}>{stats.available}</Text>
           </View>
-          <View style={styles.divider} />
-          <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: COLORS.error }]}>
-              {stats.occupied}
-            </Text>
-            <Text style={styles.statLabel}>Busy</Text>
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: COLORS.warning }]}>
-              {stats.reserved}
-            </Text>
-            <Text style={styles.statLabel}>Rsrvd</Text>
+          <View style={styles.statDivider} />
+          <View style={styles.statSecondary}>
+            <View style={styles.statRow}>
+              <View
+                style={[styles.statDot, { backgroundColor: COLORS.error }]}
+              />
+              <Text style={styles.statSecLabel}>Occupied</Text>
+              <Text style={styles.statSecValue}>{stats.occupied}</Text>
+            </View>
+            <View style={[styles.statRow, { marginTop: 8 }]}>
+              <View
+                style={[styles.statDot, { backgroundColor: COLORS.warning }]}
+              />
+              <Text style={styles.statSecLabel}>Reserved</Text>
+              <Text style={styles.statSecValue}>{stats.reserved}</Text>
+            </View>
           </View>
         </View>
       </LinearGradient>
 
-      <View style={styles.filterContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {FILTER_TYPES.map((filter) => (
-            <TouchableOpacity
-              key={filter}
-              style={[
-                styles.chip,
-                activeFilter === filter && styles.activeChip,
-              ]}
-              onPress={() => handleFilterPress(filter)}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  activeFilter === filter && styles.activeChipText,
-                ]}
+      {/* Segmented Filter Control */}
+      <View style={styles.segmentedControlWrapper}>
+        <View style={styles.segmentedControl}>
+          {FILTER_TYPES.map((filter) => {
+            const isActive = activeFilter === filter;
+            return (
+              <TouchableOpacity
+                key={filter}
+                style={[styles.segmentBtn, isActive && styles.segmentBtnActive]}
+                onPress={() => handleFilterPress(filter)}
+                activeOpacity={0.8}
               >
-                {filter}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+                <Text
+                  style={[
+                    styles.segmentText,
+                    isActive && styles.segmentTextActive,
+                  ]}
+                >
+                  {filter}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
 
+      {/* Architectural Grid Layout */}
       <ScrollView
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={fetchSlots} />
-        }
-        contentContainerStyle={{ paddingBottom: 50 }}
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={fetchSlots}
+            tintColor={COLORS.primary}
+          />
+        }
       >
-        <View style={styles.grid}>
-          {filteredSlots.map((slot, index) => (
-            <Animated.View
-              key={slot._id}
-              style={[styles.slot, { opacity: fadeAnim }]}
-            >
-              <View style={styles.slotHeader}>
-                <Text style={styles.slotName}>{slot.slotName}</Text>
-                <View
+        <Animated.View style={[styles.gridContainer, { opacity: fadeAnim }]}>
+          {/* The Central Driveway (Only visible when viewing 'All') */}
+          {activeFilter === "All" && filteredSlots.length > 0 && (
+            <View style={styles.drivewayAisle}>
+              <View style={styles.drivewayLine} />
+            </View>
+          )}
+
+          {filteredSlots.length === 0 && !refreshing ? (
+            <View style={styles.emptyGrid}>
+              <Ionicons
+                name="car-sport-outline"
+                size={48}
+                color={COLORS.gray400}
+              />
+              <Text style={styles.emptyGridText}>
+                No {activeFilter.toLowerCase()} spots found.
+              </Text>
+            </View>
+          ) : (
+            filteredSlots.map((slot, index) => {
+              const isAvailable = slot.currentStatus === "available";
+              const isOccupied = slot.currentStatus === "occupied";
+              const isReserved = slot.currentStatus === "reserved";
+
+              // Determine layout position for architectural view
+              const isLeftSide = index % 2 === 0;
+
+              return (
+                <TouchableOpacity
+                  key={slot._id}
+                  activeOpacity={isAvailable ? 0.7 : 1}
                   style={[
-                    styles.statusDot,
-                    { backgroundColor: getStatusColor(slot.currentStatus) },
+                    styles.slotWrapper,
+                    isLeftSide ? { paddingRight: 20 } : { paddingLeft: 20 },
                   ]}
-                />
-              </View>
+                >
+                  <View
+                    style={[
+                      styles.slotCard,
+                      isAvailable ? styles.slotAvailable : styles.slotMuted,
+                      isLeftSide ? styles.borderRight : styles.borderLeft,
+                    ]}
+                  >
+                    {/* Header: Slot Name */}
+                    <View style={styles.slotHeader}>
+                      <Text
+                        style={[
+                          styles.slotNameText,
+                          isAvailable
+                            ? { color: COLORS.gray900 }
+                            : { color: COLORS.gray500 },
+                        ]}
+                      >
+                        {slot.slotName}
+                      </Text>
+                    </View>
 
-              <View style={styles.dashedLineLeft} />
-              <View style={styles.dashedLineRight} />
-              <View style={styles.wheelStopper} />
+                    {/* Body: Status Visualization */}
+                    <View style={styles.slotBody}>
+                      {isAvailable && (
+                        <>
+                          <Animated.View style={{ opacity: pulseAnim }}>
+                            <MaterialCommunityIcons
+                              name="car-arrow-right"
+                              size={32}
+                              color={COLORS.success}
+                            />
+                          </Animated.View>
+                          <Text style={styles.availableText}>AVAILABLE</Text>
+                        </>
+                      )}
 
-              <View style={styles.slotContent}>
-                {slot.currentStatus === "available" && (
-                  <Text style={styles.emptyText}>OPEN</Text>
-                )}
+                      {isOccupied && (
+                        <>
+                          <Ionicons
+                            name="car-sport"
+                            size={32}
+                            color={COLORS.gray400}
+                          />
+                          <Text style={styles.mutedText}>OCCUPIED</Text>
+                        </>
+                      )}
 
-                {slot.currentStatus === "reserved" && (
-                  <MaterialCommunityIcons
-                    name="clock-outline"
-                    size={98}
-                    color={COLORS.warning}
-                  />
-                )}
-
-                {slot.currentStatus === "occupied" &&
-                  carAnim.current[index] && (
-                    <Animated.Image
-                      source={require("../assets/images/car.png")}
-                      style={[
-                        styles.carImage,
-                        {
-                          transform: [{ translateY: carAnim.current[index] }],
-                        },
-                      ]}
-                      resizeMode="contain"
-                    />
-                  )}
-              </View>
-            </Animated.View>
-          ))}
-        </View>
+                      {isReserved && (
+                        <>
+                          <MaterialCommunityIcons
+                            name="clock-outline"
+                            size={30}
+                            color={COLORS.warning}
+                          />
+                          <Text
+                            style={[
+                              styles.mutedText,
+                              { color: COLORS.warning },
+                            ]}
+                          >
+                            RESERVED
+                          </Text>
+                        </>
+                      )}
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </Animated.View>
       </ScrollView>
     </View>
   );
@@ -263,195 +352,214 @@ export default Home;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.gray100,
+    backgroundColor: "#F4F6F8",
   },
+
+  /* Header Architecture */
   headerGradient: {
-    paddingTop: 15,
-    paddingBottom: 50,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-    height: SIZES.height * 0.2,
+    paddingBottom: 24,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    ...SHADOWS.medium,
+    zIndex: 10,
   },
   headerContent: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: PADDING,
-    paddingTop: -25,
-  },
-  greeting: {
-    fontSize: 14,
-    color: "rgba(255,255,255,0.8)",
-    fontFamily: "SpaceMono-Regular",
-  },
-  appName: {
-    fontSize: 26,
-    fontWeight: "bold",
-    color: COLORS.white,
-    letterSpacing: 0.5,
-  },
-  profileImg: {
-    width: 45,
-    height: 45,
-    borderRadius: 25,
-    borderWidth: 2,
-    borderColor: COLORS.white,
-  },
-  statsContainer: {
-    position: "absolute",
-    bottom: -35,
-    left: PADDING,
-    right: PADDING,
-    flexDirection: "row",
-    backgroundColor: COLORS.white,
-    borderRadius: 20,
-    paddingVertical: 15,
-    justifyContent: "space-around",
-    alignItems: "center",
-    ...SHADOWS.medium,
-    elevation: 10,
-  },
-  statItem: {
-    alignItems: "center",
-  },
-  statNumber: {
-    fontSize: 22,
-    fontWeight: "bold",
-  },
-  statLabel: {
-    fontSize: 12,
-    color: COLORS.gray500,
-    fontWeight: "600",
-  },
-  divider: {
-    width: 1,
-    height: "60%",
-    backgroundColor: COLORS.gray200,
-  },
-  filterContainer: {
-    marginTop: 50,
-    marginBottom: 6,
-    marginHorizontal: 4,
-  },
-  filterScroll: {
-    paddingHorizontal: PADDING,
-    gap: 1,
-  },
-  chip: {
     paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 25,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.gray300,
-    marginHorizontal: 3,
+    marginBottom: 20,
   },
-  activeChip: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  chipText: {
-    color: COLORS.gray600,
-    fontWeight: "600",
+  headerTextWrap: { alignItems: "center", flex: 1 },
+  headerSubtitle: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "rgba(255,255,255,0.7)",
+    letterSpacing: 2,
+    marginBottom: 2,
   },
-  activeChipText: {
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: "900",
     color: COLORS.white,
+    letterSpacing: -0.5,
   },
-  scrollContent: {
-    paddingBottom: 100,
+
+  /* Hero Dashboard Stats */
+  dashboardStats: {
+    flexDirection: "row",
+    backgroundColor: "rgba(0,0,0,0.15)",
+    marginHorizontal: 20,
+    borderRadius: 20,
+    padding: 20,
+    alignItems: "center",
   },
-  grid: {
+  statMain: { flex: 1 },
+  statMainLabel: {
+    color: COLORS.success,
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  statMainValue: {
+    color: COLORS.white,
+    fontSize: 40,
+    fontWeight: "900",
+    letterSpacing: -1,
+    lineHeight: 45,
+  },
+  statDivider: {
+    width: 1,
+    height: "80%",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    marginHorizontal: 20,
+  },
+  statSecondary: { flex: 1, justifyContent: "center" },
+  statRow: { flexDirection: "row", alignItems: "center" },
+  statDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
+  statSecLabel: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 13,
+    fontWeight: "600",
+    flex: 1,
+  },
+  statSecValue: { color: COLORS.white, fontSize: 16, fontWeight: "800" },
+
+  /* Segmented Control Pill */
+  segmentedControlWrapper: {
+    paddingHorizontal: 20,
+    marginTop: 20,
+    marginBottom: 10,
+    zIndex: 5,
+  },
+  segmentedControl: {
+    flexDirection: "row",
+    backgroundColor: "#E2E8F0", // Light slate
+    borderRadius: 12,
+    padding: 4,
+  },
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 8,
+  },
+  segmentBtnActive: {
+    backgroundColor: COLORS.white,
+    ...SHADOWS.light,
+  },
+  segmentText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.gray500,
+  },
+  segmentTextActive: {
+    color: COLORS.gray900,
+    fontWeight: "800",
+  },
+
+  /* Grid Layout */
+  scrollView: { flex: 1 },
+  scrollContent: { paddingBottom: 100, paddingTop: 10 },
+  gridContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
     paddingHorizontal: PADDING,
-    gap: SLOT_GAP,
-    paddingBottom: 45,
-  },
-  slot: {
-    width: SLOT_WIDTH,
-    height: SLOT_WIDTH * 1.5,
-    backgroundColor: "#34495E",
-    borderRadius: 16,
-    overflow: "hidden",
     position: "relative",
-    ...SHADOWS.small,
-    marginBottom: SLOT_GAP,
   },
+
+  /* Central Driveway */
+  drivewayAisle: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: width / 2,
+    width: 2,
+    alignItems: "center",
+    zIndex: -1,
+  },
+  drivewayLine: {
+    flex: 1,
+    width: 2,
+    borderWidth: 1,
+    borderColor: "#CBD5E1", 
+    borderStyle: "dashed",
+  },
+
+  /* Slot Wrappers & Cards */
+  slotWrapper: {
+    width: "50%",
+    marginBottom: SPACING.m,
+  },
+  slotCard: {
+    height: 120,
+    borderRadius: 16,
+    padding: 12,
+    justifyContent: "space-between",
+  },
+
+  /* The "Hero" Available Slot */
+  slotAvailable: {
+    backgroundColor: COLORS.white,
+    ...SHADOWS.medium,
+    borderWidth: 1,
+    borderColor: "rgba(16, 185, 129, 0.2)", // Subtle green glow edge
+  },
+
+  /* The "Muted" Unavailable Slot */
+  slotMuted: {
+    backgroundColor: "#E2E8F0", // Flat grey background
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+  },
+
+  /* Architectural Opening Lines */
+  borderRight: { borderRightWidth: 4, borderRightColor: COLORS.gray300 }, // Opens to the right
+  borderLeft: { borderLeftWidth: 4, borderLeftColor: COLORS.gray300 }, // Opens to the left
+
   slotHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 8,
-    zIndex: 10,
+    justifyContent: "flex-start",
   },
-  slotName: {
-    color: "rgba(255,255,255,0.9)",
-    fontWeight: "bold",
-    fontSize: 14,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  dashedLineLeft: {
-    position: "absolute",
-    left: 12,
-    top: 40,
-    bottom: 12,
-    width: 2,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.4)",
-    borderStyle: "dashed",
-  },
-  dashedLineRight: {
-    position: "absolute",
-    right: 12,
-    top: 40,
-    bottom: 12,
-    width: 2,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.4)",
-    borderStyle: "dashed",
-  },
-  wheelStopper: {
-    position: "absolute",
-    bottom: 15,
-    left: 25,
-    right: 25,
-    height: 6,
-    backgroundColor: "#F1C40F",
-    borderRadius: 3,
-    opacity: 0.8,
-  },
-  slotContent: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  emptyText: {
-    color: "rgba(255,255,255,0.2)",
-    fontSize: 34,
+  slotNameText: {
+    fontSize: 16,
     fontWeight: "900",
-    letterSpacing: 2,
   },
-  carImage: {
-    width: "85%",
-    height: "85%",
-    marginBottom: 10,
+  slotBody: {
+    alignItems: "flex-end",
+    justifyContent: "flex-end",
+    flex: 1,
   },
-  fab: {
-    position: "absolute",
-    bottom: 30,
-    right: 20,
-    borderRadius: 30,
-    ...SHADOWS.medium,
+  availableText: {
+    color: COLORS.success,
+    fontSize: 11,
+    fontWeight: "900",
+    marginTop: 4,
+    letterSpacing: 0.5,
   },
-  fabGradient: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    justifyContent: "center",
-    alignItems: "center",
+  mutedText: {
+    color: COLORS.gray500,
+    fontSize: 10,
+    fontWeight: "800",
+    marginTop: 4,
+    letterSpacing: 0.5,
+  },
+
+  emptyGrid: { width: "100%", alignItems: "center", paddingTop: 60 },
+  emptyGridText: {
+    marginTop: 12,
+    color: COLORS.gray500,
+    fontWeight: "600",
+    fontSize: 15,
   },
 });

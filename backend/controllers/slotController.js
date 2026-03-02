@@ -1,23 +1,21 @@
 const Slot = require('../models/Slot');
+const ParkingLot = require('../models/ParkingLot');
 
 module.exports = {
     createSlot: async (req, res) => {
         try {
-            const { slotName, slotStatus } = req.body;
+            const { slotName, slotStatus, parkingLotId } = req.body;
 
-            // Basic validation
-            if (!slotName || !slotStatus) {
-                return res.status(400).json({ message: 'slotName and slotStatus are required.' });
+            if (!slotName || !slotStatus || !parkingLotId) {
+                return res.status(400).json({ message: 'slotName, slotStatus, and parkingLotId are required.' });
             }
 
-            // Check if slotName already exists (optional)
-            const existingSlot = await Slot.findOne({ slotName });
+            const existingSlot = await Slot.findOne({ slotName, parkingLotId });
             if (existingSlot) {
-                return res.status(409).json({ message: 'Slot with this name already exists.' });
+                return res.status(409).json({ message: 'Slot with this name already exists in this parking lot.' });
             }
 
-            // Create and save slot
-            const newSlot = new Slot({ slotName, slotStatus });
+            const newSlot = new Slot({ slotName, slotStatus, parkingLotId });
             await newSlot.save();
 
             res.status(201).json({ message: 'Slot created successfully', slot: newSlot });
@@ -28,7 +26,13 @@ module.exports = {
     },
     getAllSlots: async (req, res) => {
         try {
-            const slotDocs = await Slot.find(); // full Mongoose docs
+            const { parkingLotId } = req.query; 
+            
+            if (!parkingLotId) {
+                return res.status(400).json({ message: 'parkingLotId query parameter is required.' });
+            }
+
+            const slotDocs = await Slot.find({ parkingLotId }); 
             const slots = slotDocs.map(slot => slot.toObject({ virtuals: true }));
 
             res.status(200).json({
@@ -41,92 +45,74 @@ module.exports = {
         }
     },
     getAvailableSlots: async (req, res) => {
+        const { startTime, endTime, parkingLotId } = req.body;
+
+        if (!startTime || !endTime || !parkingLotId) {
+            return res.status(400).json({ message: "Start time, End time, and ParkingLot ID are required." });
+        }
+
         try {
-            const { startTime, endTime } = req.body;
-
-            if (!startTime || !endTime) {
-                return res.status(400).json({ message: "Start time and End time are required." });
-            }
-
-            if (new Date(endTime) <= new Date(startTime)) {
-                return res.status(400).json({ message: "End time must be after Start time." });
-            }
-
             const start = new Date(startTime);
             const end = new Date(endTime);
 
-            const availableSlots = await Slot.find({
-                $nor: [
-                    {
-                        reservations: {
-                            $elemMatch: {
-                                $or: [
-                                    {
-                                        startTime: { $lt: end },
-                                        endTime: { $gt: start }
-                                    }
-                                ]
-                            }
-                        }
-                    }
-                ]
-            });
+            const slots = await Slot.find({ parkingLotId });
 
-            const slotNames = availableSlots.map(slot => slot.slotName);
+            const availableSlots = slots.filter(slot => {
+                if (slot.slotStatus === 'occupied') return false;
+                const hasConflict = slot.reservations.some(res =>
+                    (start >= res.startTime && start < res.endTime) ||
+                    (end > res.startTime && end <= res.endTime) ||
+                    (start <= res.startTime && end >= res.endTime)
+                );
+                return !hasConflict;
+            }).map(slot => slot.slotName);
 
-            return res.status(200).json({ availableSlots: slotNames });
+            res.status(200).json({ availableSlots });
         } catch (error) {
-            console.error("Error fetching available slots:", error);
-            return res.status(500).json({ message: "Server error while fetching slots." });
+            res.status(500).json({ message: "Error fetching available slots." });
         }
     },
     addReservationToSlot: async (req, res) => {
+        const { slotName, parkingLotId, userId, startTime, endTime } = req.body;
+
         try {
-            const { slotName, userId, startTime, endTime } = req.body;
+            const slot = await Slot.findOne({ slotName, parkingLotId });
+            if (!slot) return res.status(404).json({ message: "Slot not found" });
 
-            const slot = await Slot.findOne({ slotName });
-
-            if (!slot) {
-                return res.status(404).json({ message: "Slot not found" });
-            }
-
-            slot.reservations.push({
-                userId,
-                startTime,
-                endTime,
-            });
-
+            slot.reservations.push({ userId, startTime, endTime });
             await slot.save();
-
-            res.status(200).json({ message: "Reservation added to slot" });
-        } catch (err) {
-            console.error("Failed to update slot reservation", err);
-            res.status(500).json({ message: "Internal Server Error" });
+            res.status(200).json({ message: "Reservation added successfully" });
+        } catch (error) {
+            res.status(500).json({ message: "Failed to add reservation", error });
         }
     },
     updateSlotStatus: async (req, res) => {
+        const { lotPrefix, updates } = req.body;
+
+        if (!lotPrefix || !updates || !Array.isArray(updates)) {
+            return res.status(400).json({ message: "Invalid payload format." });
+        }
+
         try {
-            const updates = Array.isArray(req.body) ? req.body : [req.body]; // allow single or multiple
-
-            const results = [];
-
-            for (const { slotName, status } of updates) {
-                const slot = await Slot.findOne({ slotName });
-
-                if (!slot) {
-                    results.push({ slotName, success: false, message: "Slot not found" });
-                    continue;
-                }
-
-                slot.slotStatus = status;
-                await slot.save();
-                results.push({ slotName, success: true, message: `Updated to ${status}` });
+            const parkingLot = await ParkingLot.findOne({ mqttTopicPrefix: lotPrefix });
+            if (!parkingLot) {
+                console.log(`[Error] Parking Lot with prefix ${lotPrefix} not found.`);
+                return res.status(404).json({ message: "Parking Lot hardware ID not found." });
             }
 
-            res.status(200).json({ message: "Batch update completed", results });
-        } catch (err) {
-            console.error("Failed to update slot status", err);
-            res.status(500).json({ message: "Internal Server Error" });
+            const bulkOps = updates.map(update => ({
+                updateOne: {
+                    filter: { slotName: update.slotName, parkingLotId: parkingLot._id },
+                    update: { $set: { slotStatus: update.status } }
+                }
+            }));
+
+            const result = await Slot.bulkWrite(bulkOps);
+            
+            res.status(200).json({ message: "Slots updated successfully." });
+        } catch (error) {
+            console.error("Error updating slots:", error);
+            res.status(500).json({ message: "Error updating slots." });
         }
     }
 }

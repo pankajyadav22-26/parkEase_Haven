@@ -16,6 +16,12 @@ const ReservationSchema = new mongoose.Schema({
 }, { _id: false });
 
 const SlotSchema = new mongoose.Schema({
+    parkingLotId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'ParkingLot',
+        required: true,
+        index: true
+    },
     slotName: {
         type: String,
         required: true
@@ -27,6 +33,8 @@ const SlotSchema = new mongoose.Schema({
     },
     reservations: [ReservationSchema]
 });
+
+SlotSchema.index({ parkingLotId: 1, slotName: 1 }, { unique: true });
 
 SlotSchema.virtual('currentStatus').get(function () {
     const now = new Date();

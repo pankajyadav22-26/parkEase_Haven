@@ -12,10 +12,9 @@ require("./utils/redisClient");
 const mlScheduler = require("./utils/mlScheduler");
 mlScheduler();
 
-
-// Routers
 const authRouter = require('./routes/authRoute');
 const userRouter = require('./routes/userRoute');
+const parkingLotRouter = require('./routes/parkingLotRoute');
 const slotRouter = require('./routes/slotRoute');
 const paymentRouter = require('./routes/paymentRoute');
 const bookingRouter = require('./routes/bookingRoute');
@@ -26,19 +25,17 @@ const esp32Check = require('./routes/esp32Route');
 
 const port = process.env.PORT || 3000;
 
-// MongoDB connection
 mongoose.connect(process.env.MONGO_URL)
     .then(() => console.log("DB Connected"))
     .catch((err) => console.error("MongoDB error:", err));
 
-// Middlewares
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
-// API routes
 app.use('/api/user', authRouter);
 app.use('/api/useroperations', userRouter);
+app.use('/api/parkinglot', parkingLotRouter);
 app.use('/api/slotoperations', slotRouter);
 app.use('/api/makePayment', paymentRouter);
 app.use('/api/booking', bookingRouter);

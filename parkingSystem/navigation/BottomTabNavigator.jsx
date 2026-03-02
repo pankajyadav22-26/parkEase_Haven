@@ -2,7 +2,7 @@ import React from "react";
 import { Platform, View } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
-import { Home, Profile, Reservation } from "../screen/index";
+import { MapScreen, Profile, Reservation } from "../screen/index";
 import { COLORS, SHADOWS } from "../constants/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -20,12 +20,12 @@ const BottomTabNavigation = () => {
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.gray500,
         tabBarStyle: {
-          position: 'absolute',
+          position: "absolute",
           bottom: 0,
           left: 0,
           right: 0,
-          height: (Platform.OS === 'ios' ? 50 : 60) + insets.bottom-25,
-          backgroundColor: '#ffffff',
+          height: (Platform.OS === "ios" ? 50 : 60) + insets.bottom - 25,
+          backgroundColor: "#ffffff",
           borderTopWidth: 0,
           elevation: 8,
           shadowColor: "#000",
@@ -36,26 +36,26 @@ const BottomTabNavigation = () => {
       }}
     >
       <Tab.Screen
-        name="Home"
-        component={Home}
+        name="MapExplore"
+        component={MapScreen}
         options={{
           tabBarIcon: ({ focused, color }) => (
             <Ionicons
-              name={focused ? "home" : "home-outline"}
+              name={focused ? "map" : "map-outline"}
               size={26}
               color={color}
             />
           ),
         }}
       />
-      
+
       <Tab.Screen
         name="Reservation"
         component={Reservation}
         options={{
           tabBarIcon: ({ focused, color }) => (
             <Ionicons
-              name={focused ? "car-sport" : "car-sport-outline"} 
+              name={focused ? "car-sport" : "car-sport-outline"}
               size={32}
               color={focused ? COLORS.primary : COLORS.gray400}
             />

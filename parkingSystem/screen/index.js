@@ -5,6 +5,7 @@ import LoginPage from "./LoginPage"
 import SignUp from "./SignUp"
 import UserReservations from "./UserReservations";
 import Transaction from "./Transaction"
+import MapScreen from './MapScreen';
 
 export {
     Home,
@@ -13,5 +14,6 @@ export {
     LoginPage,
     SignUp,
     UserReservations,
-    Transaction
+    Transaction,
+    MapScreen
 }
