@@ -1,37 +1,64 @@
 import React, { useEffect, useState, useRef } from "react";
-import { Modal, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Dimensions, StatusBar } from "react-native";
+import { 
+  Modal, 
+  View, 
+  Text, 
+  TouchableOpacity, 
+  StyleSheet, 
+  ActivityIndicator, 
+  Dimensions, 
+  StatusBar 
+} from "react-native";
 import MapView, { Marker, Circle, PROVIDER_DEFAULT } from "react-native-maps";
 import * as Location from "expo-location";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { COLORS, SIZES, SHADOWS } from "../constants/theme";
+import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+
+import { COLORS, SHADOWS, SIZES } from "../constants/theme";
 
 const { width, height } = Dimensions.get("window");
 const MAX_DISTANCE_METERS = 200;
 
+const silverMapStyle = [
+  { "elementType": "geometry", "stylers": [{ "color": "#f5f5f5" }] },
+  { "elementType": "labels.icon", "stylers": [{ "visibility": "off" }] },
+  { "elementType": "labels.text.fill", "stylers": [{ "color": "#616161" }] },
+  { "elementType": "labels.text.stroke", "stylers": [{ "color": "#f5f5f5" }] },
+  { "featureType": "administrative.land_parcel", "elementType": "labels.text.fill", "stylers": [{ "color": "#bdbdbd" }] },
+  { "featureType": "poi", "elementType": "geometry", "stylers": [{ "color": "#eeeeee" }] },
+  { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#ffffff" }] },
+  { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#c9c9c9" }] }
+];
+
 const getDistanceInMeters = (lat1, lon1, lat2, lon2) => {
   if (!lat1 || !lon1 || !lat2 || !lon2) return Infinity;
   const R = 6371000;
-  const dLat = (lat2 - lat1) * (Math.PI / 180);
-  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const toRad = (value) => (value * Math.PI) / 180;
+  
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
   const a =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * (Math.PI / 180)) *
-    Math.cos(lat2 * (Math.PI / 180)) *
+    Math.cos(toRad(lat1)) *
+    Math.cos(toRad(lat2)) *
     Math.sin(dLon / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 };
 
-// NEW: Accepts targetCoords prop { latitude, longitude, name }
 const MapModal = ({ visible, onClose, targetCoords }) => {
+  const insets = useSafeAreaInsets();
   const [userCoords, setUserCoords] = useState(null);
   const [distance, setDistance] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [hasNotifiedEntry, setHasNotifiedEntry] = useState(false);
+
   const intervalRef = useRef(null);
   const mapRef = useRef(null);
 
   const fetchLocationAndUpdateDistance = async () => {
-    // Safety check: if we don't know where the gate is, we can't calculate distance
     if (!targetCoords) return;
 
     try {
@@ -42,7 +69,6 @@ const MapModal = ({ visible, onClose, targetCoords }) => {
       };
       setUserCoords(userLocation);
 
-      // Calculate distance to the DYNAMIC target coordinates
       const dist = getDistanceInMeters(
         userLocation.latitude,
         userLocation.longitude,
@@ -50,10 +76,17 @@ const MapModal = ({ visible, onClose, targetCoords }) => {
         targetCoords.longitude
       );
       setDistance(dist.toFixed(0));
+
+      if (dist <= MAX_DISTANCE_METERS && !hasNotifiedEntry) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setHasNotifiedEntry(true);
+      } else if (dist > MAX_DISTANCE_METERS && hasNotifiedEntry) {
+        setHasNotifiedEntry(false);
+      }
       
       if (mapRef.current && visible) {
           mapRef.current.fitToCoordinates([userLocation, targetCoords], {
-            edgePadding: { top: 100, right: 50, bottom: 200, left: 50 },
+            edgePadding: { top: 120, right: 60, bottom: 250, left: 60 },
             animated: true,
           });
       }
@@ -64,28 +97,32 @@ const MapModal = ({ visible, onClose, targetCoords }) => {
   };
 
   useEffect(() => {
-    if (visible && targetCoords) {
-      (async () => {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== "granted") {
-          alert("Location permission denied");
+    if (visible) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (targetCoords) {
+        (async () => {
+          const { status } = await Location.requestForegroundPermissionsAsync();
+          if (status !== "granted") {
+            alert("Location permission denied. Cannot verify gate distance.");
+            setLoading(false);
+            return;
+          }
+
+          setLoading(true);
+          await fetchLocationAndUpdateDistance();
           setLoading(false);
-          return;
-        }
 
-        setLoading(true);
-        await fetchLocationAndUpdateDistance();
-        setLoading(false);
-
-        intervalRef.current = setInterval(() => {
-          fetchLocationAndUpdateDistance();
-        }, 5000);
-      })();
+          intervalRef.current = setInterval(() => {
+            fetchLocationAndUpdateDistance();
+          }, 3000);
+        })();
+      }
+    } else {
+      setHasNotifiedEntry(false);
+      setDistance(null);
     }
 
-    return () => {
-      clearInterval(intervalRef.current);
-    };
+    return () => clearInterval(intervalRef.current);
   }, [visible, targetCoords]);
 
   const isInside = distance && parseFloat(distance) <= MAX_DISTANCE_METERS;
@@ -95,14 +132,21 @@ const MapModal = ({ visible, onClose, targetCoords }) => {
       <View style={styles.container}>
         <StatusBar barStyle="dark-content" />
         
-        <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.8}>
-           <MaterialCommunityIcons name="close" size={24} color={COLORS.text} />
+        <TouchableOpacity 
+            style={[styles.closeBtn, { top: insets.top-20 }]} 
+            onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                onClose();
+            }} 
+            activeOpacity={0.8}
+        >
+           <Ionicons name="close" size={24} color={COLORS.gray800} />
         </TouchableOpacity>
 
         {loading || !targetCoords ? (
           <View style={styles.loaderWrapper}>
             <ActivityIndicator size="large" color={COLORS.primary} />
-            <Text style={styles.loadingText}>Locating gate and you...</Text>
+            <Text style={styles.loadingText}>Locating nearest gate...</Text>
           </View>
         ) : (
           <>
@@ -110,6 +154,7 @@ const MapModal = ({ visible, onClose, targetCoords }) => {
               ref={mapRef}
               style={styles.map}
               provider={PROVIDER_DEFAULT}
+              customMapStyle={silverMapStyle}
               initialRegion={{
                 latitude: targetCoords.latitude,
                 longitude: targetCoords.longitude,
@@ -118,47 +163,71 @@ const MapModal = ({ visible, onClose, targetCoords }) => {
               }}
               showsUserLocation={true}
               showsMyLocationButton={false}
+              pitchEnabled={false}
             >
               <Marker coordinate={targetCoords} title={targetCoords.name || "Parking Gate"}>
-                 <View style={styles.gateMarker}>
-                    <MaterialCommunityIcons name="boom-gate" size={20} color={COLORS.white} />
+                 <View style={styles.markerWrapper}>
+                    <View style={styles.gateMarker}>
+                        <MaterialCommunityIcons name="boom-gate-up" size={22} color={COLORS.white} />
+                    </View>
+                    <View style={styles.markerTriangle} />
                  </View>
               </Marker>
               
               <Circle
                 center={targetCoords}
                 radius={MAX_DISTANCE_METERS}
-                strokeColor={isInside ? "rgba(46, 125, 50, 0.5)" : "rgba(211, 47, 47, 0.5)"}
-                fillColor={isInside ? "rgba(46, 125, 50, 0.1)" : "rgba(211, 47, 47, 0.1)"}
+                strokeColor={isInside ? "rgba(46, 125, 50, 0.6)" : "rgba(0, 109, 119, 0.4)"}
+                fillColor={isInside ? "rgba(46, 125, 50, 0.15)" : "rgba(0, 109, 119, 0.08)"}
+                strokeWidth={2}
               />
             </MapView>
-            <View style={styles.statusCard}>
-               <View style={styles.statusHeader}>
-                  <View style={[styles.statusIcon, { backgroundColor: isInside ? '#E8F5E9' : '#FFEBEE' }]}>
-                     <MaterialCommunityIcons 
-                        name={isInside ? "check-circle" : "map-marker-distance"} 
-                        size={24} 
-                        color={isInside ? COLORS.success : COLORS.error} 
-                     />
-                  </View>
-                  <View>
-                     <Text style={styles.statusTitle}>
-                        {isInside ? "You are in range" : "Move closer to gate"}
-                     </Text>
-                     <Text style={styles.statusSubtitle}>
-                        Gate access requires {MAX_DISTANCE_METERS}m range
-                     </Text>
-                  </View>
-               </View>
-               
-               <View style={styles.divider} />
-               
-               <View style={styles.distanceRow}>
-                  <Text style={styles.distanceLabel}>Distance to {targetCoords.name || 'Gate'}</Text>
-                  <Text style={[styles.distanceValue, { color: isInside ? COLORS.success : COLORS.error }]}>
-                     {distance || '---'} m
-                  </Text>
-               </View>
+
+            <View style={[styles.statusCardWrapper, { bottom: Math.max(insets.bottom, 20) }]}>
+              {isInside ? (
+                <LinearGradient
+                    colors={[COLORS.success, '#1B5E20']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.statusCard}
+                >
+                    <View style={styles.statusHeader}>
+                        <View style={[styles.statusIcon, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                            <MaterialCommunityIcons name="check-decagram" size={28} color={COLORS.white} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={[styles.statusTitle, { color: COLORS.white }]}>You are in range</Text>
+                            <Text style={[styles.statusSubtitle, { color: 'rgba(255,255,255,0.8)' }]}>
+                                You can now open the gate
+                            </Text>
+                        </View>
+                    </View>
+                    <View style={[styles.divider, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
+                    <View style={styles.distanceRow}>
+                        <Text style={[styles.distanceLabel, { color: 'rgba(255,255,255,0.9)' }]}>Distance to Gate</Text>
+                        <Text style={[styles.distanceValue, { color: COLORS.white }]}>{distance}m</Text>
+                    </View>
+                </LinearGradient>
+              ) : (
+                <View style={[styles.statusCard, { backgroundColor: COLORS.white }]}>
+                    <View style={styles.statusHeader}>
+                        <View style={[styles.statusIcon, { backgroundColor: COLORS.primaryLight }]}>
+                            <MaterialCommunityIcons name="map-marker-distance" size={24} color={COLORS.primary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.statusTitle}>Move closer to gate</Text>
+                            <Text style={styles.statusSubtitle}>
+                                Must be within {MAX_DISTANCE_METERS}m to open
+                            </Text>
+                        </View>
+                    </View>
+                    <View style={styles.divider} />
+                    <View style={styles.distanceRow}>
+                        <Text style={styles.distanceLabel}>Distance to Gate</Text>
+                        <Text style={[styles.distanceValue, { color: COLORS.gray900 }]}>{distance || '---'}m</Text>
+                    </View>
+                </View>
+              )}
             </View>
           </>
         )}
@@ -172,7 +241,7 @@ export default MapModal;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.white,
   },
   map: {
     width: width,
@@ -180,73 +249,95 @@ const styles = StyleSheet.create({
   },
   closeBtn: {
     position: 'absolute',
-    top: 50, // Moved down slightly to avoid iOS dynamic island / Android notches
     left: 20,
     zIndex: 10,
     backgroundColor: COLORS.white,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
     ...SHADOWS.medium,
   },
   loaderWrapper: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.white,
   },
   loadingText: {
-    marginTop: 12,
+    marginTop: 16,
     color: COLORS.gray600,
-    fontSize: 14,
-    fontWeight: "500"
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  /* Gate Marker */
+  markerWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   gateMarker: {
-    backgroundColor: COLORS.primary,
-    padding: 8,
-    borderRadius: 20,
+    backgroundColor: COLORS.gray900,
+    padding: 10,
+    borderRadius: 16,
     borderWidth: 2,
     borderColor: COLORS.white,
+    ...SHADOWS.small,
   },
-  statusCard: {
+  markerTriangle: {
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderStyle: 'solid',
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderTopWidth: 8,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: COLORS.gray900,
+    marginTop: -2,
+  },
+  /* Bottom Status Card */
+  statusCardWrapper: {
     position: 'absolute',
-    bottom: 40,
     left: 20,
     right: 20,
-    backgroundColor: COLORS.white,
-    borderRadius: 20,
-    padding: 20,
+  },
+  statusCard: {
+    borderRadius: 24,
+    padding: 24,
     ...SHADOWS.medium,
   },
   statusHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 20,
   },
   statusIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 15,
+    marginRight: 16,
   },
   statusTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.gray900,
+    marginBottom: 4,
   },
   statusSubtitle: {
-    fontSize: 12,
+    fontSize: 13,
     color: COLORS.gray500,
-    marginTop: 2,
+    fontWeight: '500',
   },
   divider: {
     height: 1,
     backgroundColor: COLORS.gray100,
-    marginBottom: 15,
+    marginBottom: 20,
   },
   distanceRow: {
     flexDirection: 'row',
@@ -254,13 +345,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   distanceLabel: {
-    fontSize: 14,
+    fontSize: 15,
     color: COLORS.gray600,
-    fontWeight: '500',
-    maxWidth: '70%',
+    fontWeight: '700',
   },
   distanceValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: -1,
   },
 });

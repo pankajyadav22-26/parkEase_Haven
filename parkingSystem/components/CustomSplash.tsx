@@ -12,9 +12,10 @@ import * as SplashScreen from "expo-splash-screen";
 import * as Font from "expo-font";
 import { Asset } from "expo-asset";
 import { LinearGradient } from "expo-linear-gradient";
-import { COLORS } from "../constants/theme";
-
+import * as Haptics from "expo-haptics";
 import { StatusBar } from "expo-status-bar";
+
+import { COLORS } from "../constants/theme";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -28,17 +29,16 @@ const CustomSplash = ({ onFinish }: Props) => {
   const [appIsReady, setAppIsReady] = useState(false);
   const [animationFinished, setAnimationFinished] = useState(false);
 
-  const ripple1 = useRef(new Animated.Value(0)).current;
-  const ripple2 = useRef(new Animated.Value(0)).current;
-  const ripple3 = useRef(new Animated.Value(0)).current;
-
-  const logoScale = useRef(new Animated.Value(0.3)).current;
+  const logoScale = useRef(new Animated.Value(0.6)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const textTranslateY = useRef(new Animated.Value(20)).current;
   const textOpacity = useRef(new Animated.Value(0)).current;
-
-  const exitScale = useRef(new Animated.Value(1)).current;
-  const exitOpacity = useRef(new Animated.Value(1)).current;
+  
+  const ripple1 = useRef(new Animated.Value(0)).current;
+  const ripple2 = useRef(new Animated.Value(0)).current;
+  
+  const containerOpacity = useRef(new Animated.Value(1)).current;
+  const containerScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     async function prepare() {
@@ -47,16 +47,11 @@ const CustomSplash = ({ onFinish }: Props) => {
           "SpaceMono-Regular": require("../assets/fonts/SpaceMono-Regular.ttf"),
         });
 
-        const images = [
-          require("../assets/images/splashscreen_logo.png"),
-        ];
-
-        const cacheImages = images.map((image) =>
-          Asset.fromModule(image).downloadAsync(),
-        );
+        const images = [require("../assets/images/splashscreen_logo.png")];
+        const cacheImages = images.map((image) => Asset.fromModule(image).downloadAsync());
         await Promise.all(cacheImages);
 
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+        await new Promise((resolve) => setTimeout(resolve, 2500));
       } catch (e) {
         console.warn(e);
       } finally {
@@ -71,60 +66,56 @@ const CustomSplash = ({ onFinish }: Props) => {
       Animated.spring(logoScale, {
         toValue: 1,
         friction: 8,
-        tension: 20,
+        tension: 40,
         useNativeDriver: true,
       }),
       Animated.timing(logoOpacity, {
         toValue: 1,
-        duration: 2000,
+        duration: 800,
+        easing: Easing.out(Easing.ease),
         useNativeDriver: true,
       }),
-      Animated.stagger(500, [
-        Animated.timing(textOpacity, {
-          toValue: 1,
-          duration: 1500,
-          useNativeDriver: true,
-        }),
-        Animated.timing(textTranslateY, {
-          toValue: 0,
-          duration: 1500,
-          useNativeDriver: true,
-          easing: Easing.out(Easing.cubic),
-        }),
-      ]),
+      Animated.sequence([
+        Animated.delay(300),
+        Animated.parallel([
+          Animated.timing(textOpacity, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(textTranslateY, {
+            toValue: 0,
+            duration: 800,
+            easing: Easing.out(Easing.bezier(0.25, 0.1, 0.25, 1)),
+            useNativeDriver: true,
+          }),
+        ])
+      ])
     ]).start();
-
     const createRipple = (animValue: Animated.Value, delay: number) => {
       return Animated.loop(
         Animated.sequence([
           Animated.delay(delay),
           Animated.timing(animValue, {
             toValue: 1,
-            duration: 4000,
-            easing: Easing.out(Easing.ease),
+            duration: 3000,
+            easing: Easing.out(Easing.quad),
             useNativeDriver: true,
           }),
-          Animated.timing(animValue, {
-            toValue: 0,
-            duration: 0,
-            useNativeDriver: true,
-          }),
-        ]),
+          Animated.timing(animValue, { toValue: 0, duration: 0, useNativeDriver: true }),
+        ])
       );
     };
 
-    const anim1 = createRipple(ripple1, 0);
-    const anim2 = createRipple(ripple2, 1500);
-    const anim3 = createRipple(ripple3, 3000);
+    const r1 = createRipple(ripple1, 0);
+    const r2 = createRipple(ripple2, 1500);
 
-    anim1.start();
-    anim2.start();
-    anim3.start();
+    r1.start();
+    r2.start();
 
     return () => {
-      anim1.stop();
-      anim2.stop();
-      anim3.stop();
+      r1.stop();
+      r2.stop();
     };
   }, []);
 
@@ -132,27 +123,19 @@ const CustomSplash = ({ onFinish }: Props) => {
     if (appIsReady) {
       SplashScreen.hideAsync();
 
-      Animated.sequence([
-        Animated.timing(exitScale, {
-          toValue: 0.85,
-          duration: 1000,
+      Animated.parallel([
+        Animated.timing(containerScale, {
+          toValue: 1.1,
+          duration: 600,
+          easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
-          easing: Easing.inOut(Easing.quad),
         }),
-        Animated.parallel([
-          Animated.timing(exitScale, {
-            toValue: 40,
-            duration: 2000,
-            useNativeDriver: true,
-            easing: Easing.in(Easing.cubic),
-          }),
-          Animated.timing(exitOpacity, {
-            toValue: 0,
-            duration: 1000,
-            delay: 500,
-            useNativeDriver: true,
-          }),
-        ]),
+        Animated.timing(containerOpacity, {
+          toValue: 0,
+          duration: 500,
+          delay: 100,
+          useNativeDriver: true,
+        })
       ]).start(() => {
         setAnimationFinished(true);
         onFinish();
@@ -163,35 +146,28 @@ const CustomSplash = ({ onFinish }: Props) => {
   if (animationFinished) return null;
 
   return (
-    <Animated.View style={[styles.container, { opacity: exitOpacity }]}>
-      <StatusBar
-        style="light"
-        backgroundColor="transparent"
-        translucent={true}
-      />
+    <Animated.View 
+      style={[styles.container, { opacity: containerOpacity, transform: [{ scale: containerScale }] }]} 
+      pointerEvents="none"
+    >
+      <StatusBar style="light" backgroundColor="transparent" translucent={true} />
 
       <LinearGradient
-        colors={[COLORS.primary, "#006D77", "#00251a"]}
+        colors={[COLORS.primary, COLORS.primaryDark]}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
 
-      <Animated.View
-        style={{
-          alignItems: "center",
-          justifyContent: "center",
-          transform: [{ scale: exitScale }],
-        }}
-      >
-        {[ripple1, ripple2, ripple3].map((ripple, index) => {
+      <View style={styles.centerAnchor}>
+        {[ripple1, ripple2].map((ripple, index) => {
           const scale = ripple.interpolate({
             inputRange: [0, 1],
-            outputRange: [0.8, 4],
+            outputRange: [0.8, 2.5],
           });
           const opacity = ripple.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0.5, 0],
+            inputRange: [0, 0.5, 1],
+            outputRange: [0, 0.3, 0],
           });
           return (
             <Animated.View
@@ -202,7 +178,12 @@ const CustomSplash = ({ onFinish }: Props) => {
         })}
 
         <Animated.View
-          style={{ transform: [{ scale: logoScale }], opacity: logoOpacity }}
+          style={{
+            alignItems: "center",
+            justifyContent: "center",
+            transform: [{ scale: logoScale }],
+            opacity: logoOpacity
+          }}
         >
           <Image
             source={require("../assets/images/splashscreen_logo.png")}
@@ -210,26 +191,21 @@ const CustomSplash = ({ onFinish }: Props) => {
             resizeMode="contain"
           />
         </Animated.View>
-      </Animated.View>
+      </View>
 
       <Animated.View
         style={[
           styles.textContainer,
           {
-            opacity: Animated.multiply(textOpacity, exitOpacity),
+            opacity: textOpacity,
             transform: [{ translateY: textTranslateY }],
           },
         ]}
       >
         <Text style={styles.titleText}>ParkEase Haven</Text>
-        <Text 
-          style={styles.subtitleText} 
-          numberOfLines={1} 
-          adjustsFontSizeToFit={true}
-        >
-          SMART PARKING SOLUTION
-        </Text>
+        <Text style={styles.subtitleText}>SMART VALLEY PARKING</Text>
       </Animated.View>
+
     </Animated.View>
   );
 };
@@ -239,14 +215,20 @@ export default CustomSplash;
 const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
     zIndex: 99999,
     backgroundColor: COLORS.primary,
   },
+  centerAnchor: {
+    position: 'absolute',
+    top: height * 0.38,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   logo: {
-    width: width * 0.45,
-    height: width * 0.45,
+    width: width * 0.42,
+    height: width * 0.42,
     zIndex: 10,
   },
   ripple: {
@@ -254,33 +236,31 @@ const styles = StyleSheet.create({
     width: width * 0.45,
     height: width * 0.45,
     borderRadius: (width * 0.45) / 2,
-    borderColor: "rgba(131, 197, 190, 0.4)",
+    borderColor: COLORS.white,
     borderWidth: 1.5,
-    backgroundColor: "rgba(131, 197, 190, 0.05)",
     zIndex: 1,
   },
   textContainer: {
     position: "absolute",
     bottom: height * 0.15,
     alignItems: "center",
-    width: "90%", // FIX: Ensures container spans width so centering works
+    width: "100%",
   },
   titleText: {
-    color: "#FFFFFF",
-    fontSize: 26,
+    color: COLORS.white,
+    fontSize: 28,
     fontFamily: "SpaceMono-Regular",
-    fontWeight: "bold",
-    letterSpacing: 1,
-    textAlign: "center", // FIX: Ensure title centers too
+    fontWeight: "800",
+    letterSpacing: 0.5,
+    textAlign: "center",
   },
   subtitleText: {
-    color: "#83C5BE",
-    fontSize: 10,
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
     fontFamily: "SpaceMono-Regular",
     marginTop: 8,
-    letterSpacing: 3,
-    fontWeight: "600",
-    textAlign: "center", // FIX: Center alignment
-    width: "100%",       // FIX: Use full container width
+    letterSpacing: 4,
+    fontWeight: "700",
+    textAlign: "center",
   },
 });

@@ -19,12 +19,12 @@ import React, {
 } from "react";
 import axios from "axios";
 import { useIsFocused } from "@react-navigation/native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { backendUrl } from "../constants";
-import { COLORS, SHADOWS, SIZES } from "../constants/theme";
+import { COLORS, SHADOWS, SIZES, SPACING } from "../constants/theme";
 
 import { ParkingContext } from "../contexts/ParkingContext";
 
@@ -37,7 +37,16 @@ const SLOT_WIDTH =
 
 const FILTER_TYPES = ["All", "Available", "Occupied", "Reserved"];
 
+const StatItem = ({ label, value, color, icon }) => (
+  <View style={styles.statItem}>
+    <MaterialCommunityIcons name={icon} size={18} color={color} style={{ marginBottom: 2 }} />
+    <Text style={[styles.statNumber, { color }]}>{value}</Text>
+    <Text style={styles.statLabel}>{label}</Text>
+  </View>
+);
+
 const Home = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const { selectedLot } = useContext(ParkingContext);
 
   const [slots, setSlots] = useState([]);
@@ -110,7 +119,7 @@ const Home = ({ navigation }) => {
         } else {
           carAnim.current[index].setValue(140);
         }
-      }, 500);
+      });
     } catch (error) {
       console.error("Failed to fetch slots:", error);
     } finally {
@@ -171,9 +180,17 @@ const Home = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
+      
       <LinearGradient
         colors={[COLORS.primary, COLORS.primaryDark]}
-        style={styles.headerGradient}
+        style={[
+          styles.headerGradient, 
+          { 
+            paddingTop: insets.top + SPACING.s, 
+            paddingBottom: SPACING.xxl + 25 
+          }
+        ]}
       >
         <View style={styles.headerContent}>
           <View style={styles.headerLeftInfo}>
@@ -184,47 +201,46 @@ const Home = ({ navigation }) => {
               <Ionicons name="chevron-back" size={28} color={COLORS.white} />
             </TouchableOpacity>
             <View>
-              <Text style={styles.greeting}>{selectedLot.name}</Text>
-              <Text style={styles.appName}>
-                Base: ₹{selectedLot.basePrice}/hr
+              <Text style={styles.greetingText}>Current Location</Text>
+              <Text style={styles.appName} numberOfLines={1}>
+                {selectedLot.name}
               </Text>
             </View>
           </View>
+        </View>
 
-          <TouchableOpacity onPress={() => navigation.navigate("Profile")}>
-            <Image
-              source={require("../assets/images/profile.jpeg")}
-              style={styles.profileImg}
-            />
-          </TouchableOpacity>
+        <View style={styles.priceBadgeContainer}>
+          <View style={styles.priceBadge}>
+            <MaterialCommunityIcons name="tag-outline" size={14} color={COLORS.white} />
+            <Text style={styles.priceText}>₹{selectedLot.basePrice}/hr</Text>
+          </View>
         </View>
 
         <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: COLORS.success }]}>
-              {stats.available}
-            </Text>
-            <Text style={styles.statLabel}>Free</Text>
-          </View>
+          <StatItem 
+            label="Free" 
+            value={stats.available} 
+            color={COLORS.success} 
+            icon="check-circle-outline" 
+          />
           <View style={styles.divider} />
-          <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: COLORS.error }]}>
-              {stats.occupied}
-            </Text>
-            <Text style={styles.statLabel}>Busy</Text>
-          </View>
+          <StatItem 
+            label="Busy" 
+            value={stats.occupied} 
+            color={COLORS.error} 
+            icon="car-brake-parking" 
+          />
           <View style={styles.divider} />
-          <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: COLORS.warning }]}>
-              {stats.reserved}
-            </Text>
-            <Text style={styles.statLabel}>Rsrvd</Text>
-          </View>
+          <StatItem 
+            label="Rsrvd" 
+            value={stats.reserved} 
+            color={COLORS.warning} 
+            icon="clock-outline" 
+          />
         </View>
       </LinearGradient>
 
-      {/* FILTER BAR */}
-      <View style={[styles.filterContainer, { marginTop: 55 }]}>
+      <View style={[styles.filterContainer, { marginTop: SPACING.xl + 20 }]}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -322,11 +338,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.gray100,
   },
   headerGradient: {
-    paddingTop: 45, // adjusted for SafeArea
-    paddingBottom: 50,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-    height: SIZES.height * 0.22, // slightly taller to accommodate the back button
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    zIndex: 1,
   },
   headerContent: {
     flexDirection: "row",
@@ -342,9 +356,11 @@ const styles = StyleSheet.create({
     marginRight: 10,
     padding: 5,
   },
-  greeting: {
-    fontSize: 16,
-    color: "rgba(255,255,255,0.9)",
+  greetingText: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.7)",
+    textTransform: "uppercase",
+    letterSpacing: 1,
     fontWeight: "600",
   },
   appName: {
@@ -352,6 +368,27 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: COLORS.white,
     letterSpacing: 0.5,
+  },
+  priceBadgeContainer: {
+    paddingHorizontal: PADDING + 42,
+    marginTop: SPACING.xs,
+  },
+  priceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  priceText: {
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: '700',
+    marginLeft: 6,
   },
   profileImg: {
     width: 45,
@@ -362,23 +399,24 @@ const styles = StyleSheet.create({
   },
   statsContainer: {
     position: "absolute",
-    bottom: -35,
-    left: PADDING,
-    right: PADDING,
+    bottom: -SPACING.xl,
+    left: SPACING.m,
+    right: SPACING.m,
     flexDirection: "row",
     backgroundColor: COLORS.white,
-    borderRadius: 20,
-    paddingVertical: 15,
+    borderRadius: 24,
+    paddingVertical: SPACING.m,
     justifyContent: "space-around",
     alignItems: "center",
     ...SHADOWS.medium,
-    elevation: 10,
+    zIndex: 10,
   },
   statItem: {
     alignItems: "center",
+    flex: 1,
   },
   statNumber: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "bold",
   },
   statLabel: {
@@ -422,7 +460,6 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     paddingHorizontal: PADDING,
     gap: SLOT_GAP,
-    paddingBottom: 45,
   },
   slot: {
     width: SLOT_WIDTH,

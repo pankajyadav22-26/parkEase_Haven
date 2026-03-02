@@ -8,23 +8,30 @@ import {
   TouchableOpacity,
   StatusBar,
   Alert,
+  ScrollView,
 } from "react-native";
 import React, { useContext, useEffect, useState, useCallback } from "react";
 import { AuthContext } from "../contexts/AuthContext";
 import axios from "axios";
 import { backendUrl } from "../constants";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import MapModal from "../components/MapModal";
 import { LinearGradient } from "expo-linear-gradient";
 import LottieView from "lottie-react-native";
+import * as Haptics from "expo-haptics";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { COLORS, SHADOWS } from "../constants/theme";
+import { COLORS, SHADOWS, SPACING } from "../constants/theme";
 
 const FilterChip = ({ label, active, onPress }) => (
   <TouchableOpacity
     style={[styles.filterChip, active && styles.activeFilterChip]}
-    onPress={onPress}
+    onPress={() => {
+      Haptics.selectionAsync();
+      onPress();
+    }}
+    activeOpacity={0.8}
   >
     <Text style={[styles.filterText, active && styles.activeFilterText]}>
       {label}
@@ -33,7 +40,9 @@ const FilterChip = ({ label, active, onPress }) => (
 );
 
 const UserReservations = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const { user } = useContext(AuthContext);
+
   const [reservations, setReservations] = useState([]);
   const [filtered, setFiltered] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -50,19 +59,20 @@ const UserReservations = ({ navigation }) => {
   }, [navigation]);
 
   const openMap = async (parkingLot) => {
-    // Safety check for populated data
-    if (!parkingLot || !parkingLot.location || !parkingLot.location.coordinates) {
-        Alert.alert("Error", "Location data missing for this reservation.");
-        return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (
+      !parkingLot ||
+      !parkingLot.location ||
+      !parkingLot.location.coordinates
+    ) {
+      Alert.alert("Error", "Location data missing for this reservation.");
+      return;
     }
-    
-    // GeoJSON [longitude, latitude] to MapView {latitude, longitude}
     setTargetGateCoords({
-        latitude: parkingLot.location.coordinates[0], // Make sure this matches your DB order (usually 1 is lat)
-        longitude: parkingLot.location.coordinates[1], // If your pins on MapScreen work, this order is correct.
-        name: parkingLot.name
+      latitude: parkingLot.location.coordinates[0],
+      longitude: parkingLot.location.coordinates[1],
+      name: parkingLot.name,
     });
-
     setIsMapVisible(true);
   };
 
@@ -81,6 +91,7 @@ const UserReservations = ({ navigation }) => {
   };
 
   const onRefresh = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setRefreshing(true);
     fetchReservations();
   }, []);
@@ -126,6 +137,7 @@ const UserReservations = ({ navigation }) => {
   };
 
   const handleOpenGate = async (reservationId) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     try {
       setIsGateOpening(true);
       let { status } = await Location.requestForegroundPermissionsAsync();
@@ -136,7 +148,6 @@ const UserReservations = ({ navigation }) => {
       }
 
       const location = await Location.getCurrentPositionAsync({});
-      
       const payload = {
         reservationId,
         location: {
@@ -150,6 +161,7 @@ const UserReservations = ({ navigation }) => {
       if (res.data.success) {
         setIsGateOpening(false);
         setShowSuccessAnim(true);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
         setTimeout(() => {
           setShowSuccessAnim(false);
@@ -157,11 +169,13 @@ const UserReservations = ({ navigation }) => {
         }, 3000);
       } else {
         Alert.alert("Failed", res.data.message || "Failed to open gate.");
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         setIsGateOpening(false);
       }
     } catch (err) {
       const msg = err.response?.data?.message || "Something went wrong";
       Alert.alert("Error", msg);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setIsGateOpening(false);
     }
   };
@@ -177,77 +191,100 @@ const UserReservations = ({ navigation }) => {
       (status === "Active" ||
         (status === "Upcoming" &&
           start.getTime() - now.getTime() < 15 * 60 * 1000));
-
-    // Extract Location Name safely
     const locationName = item.parkingLotId?.name || "ParkEase Location";
+
+    let statusColor = COLORS.gray500;
+    let statusBg = COLORS.gray200;
+    if (status === "Active") {
+      statusColor = COLORS.success;
+      statusBg = "#E8F5E9";
+    } else if (status === "Upcoming") {
+      statusColor = COLORS.primary;
+      statusBg = COLORS.primaryLight;
+    }
 
     return (
       <View style={[styles.ticketCard, status === "Past" && styles.pastTicket]}>
-        <View
-          style={[
-            styles.ticketHeader,
-            {
-              backgroundColor:
-                status === "Active"
-                  ? COLORS.success
-                  : status === "Upcoming"
-                    ? COLORS.primary
-                    : COLORS.gray400,
-            },
-          ]}
-        >
-          <Text style={styles.ticketTitle}>
-            {status === "Active" ? "Active Parking" : status}
+        <View style={styles.ticketHeader}>
+          <View style={[styles.statusBadge, { backgroundColor: statusBg }]}>
+            <View
+              style={[styles.statusDot, { backgroundColor: statusColor }]}
+            />
+            <Text style={[styles.statusText, { color: statusColor }]}>
+              {status === "Active" ? "ACTIVE NOW" : status.toUpperCase()}
+            </Text>
+          </View>
+          <View style={styles.slotBadge}>
+            <Text style={styles.slotBadgeText}>Spot : {item.slot}</Text>
+          </View>
+        </View>
+
+        <View style={styles.locationContainer}>
+          <View style={styles.iconCircle}>
+            <Ionicons name="business" size={18} color={COLORS.primary} />
+          </View>
+          <Text style={styles.locationText} numberOfLines={1}>
+            {locationName}
           </Text>
-          <Text style={styles.ticketSlot}>Slot : {item.slot}</Text>
+        </View>
+
+        <View style={styles.separatorContainer}>
+          <View style={styles.separatorNotchLeft} />
+          <View style={styles.dashedLine} />
+          <View style={styles.separatorNotchRight} />
         </View>
 
         <View style={styles.ticketBody}>
-          
-          <View style={styles.locationContainer}>
-            <MaterialCommunityIcons name="map-marker" size={18} color={COLORS.primary} />
-            <Text style={styles.locationText}>{locationName}</Text>
-          </View>
-          <View style={[styles.divider, { marginTop: 5, marginBottom: 15 }]} />
-
-          <View style={styles.row}>
-            <View style={styles.infoBlock}>
-              <Text style={styles.label}>START</Text>
-              <Text style={styles.value}>
+          <View style={styles.timeRow}>
+            <View style={styles.timeBlock}>
+              <Text style={styles.timeLabel}>ARRIVAL</Text>
+              <Text style={styles.timeValue}>
                 {start.toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
                 })}
               </Text>
-              <Text style={styles.date}>{start.toLocaleDateString()}</Text>
+              <Text style={styles.dateValue}>
+                {start.toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                })}
+              </Text>
             </View>
-            <MaterialCommunityIcons
-              name="arrow-right"
-              size={20}
-              color={COLORS.gray400}
-            />
-            <View style={styles.infoBlock}>
-              <Text style={styles.label}>END</Text>
-              <Text style={styles.value}>
+
+            <View style={styles.durationIndicator}>
+              <MaterialCommunityIcons
+                name="arrow-right-thin"
+                size={32}
+                color={COLORS.gray400}
+              />
+            </View>
+
+            <View style={[styles.timeBlock, { alignItems: "flex-end" }]}>
+              <Text style={styles.timeLabel}>DEPARTURE</Text>
+              <Text style={styles.timeValue}>
                 {end.toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
                 })}
               </Text>
-              <Text style={styles.date}>{end.toLocaleDateString()}</Text>
+              <Text style={styles.dateValue}>
+                {end.toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                })}
+              </Text>
             </View>
           </View>
 
-          <View style={styles.divider} />
-
-          <View style={styles.row}>
+          <View style={styles.metaRow}>
             <View>
-              <Text style={styles.label}>VEHICLE</Text>
-              <Text style={styles.value}>{item.carNumber}</Text>
+              <Text style={styles.metaLabel}>VEHICLE</Text>
+              <Text style={styles.metaValue}>{item.carNumber}</Text>
             </View>
-            <View>
-              <Text style={styles.label}>TOTAL</Text>
-              <Text style={[styles.value, { color: COLORS.primary }]}>
+            <View style={{ alignItems: "flex-end" }}>
+              <Text style={styles.metaLabel}>TOTAL PAID</Text>
+              <Text style={[styles.metaValue, { color: COLORS.primary }]}>
                 ₹{item.amount}
               </Text>
             </View>
@@ -263,32 +300,43 @@ const UserReservations = ({ navigation }) => {
                   ]}
                   onPress={() => handleOpenGate(item._id)}
                   disabled={!isGateButtonEnabled}
+                  activeOpacity={0.8}
                 >
-                  <MaterialCommunityIcons
-                    name="gate"
-                    size={20}
-                    color={COLORS.white}
-                  />
-                  <Text style={styles.btnText}>Open Gate</Text>
+                  <LinearGradient
+                    colors={
+                      isGateButtonEnabled
+                        ? [COLORS.primary, COLORS.primaryDark]
+                        : [COLORS.gray400, COLORS.gray500]
+                    }
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.gradientBtn}
+                  >
+                    <MaterialCommunityIcons
+                      name="boom-gate-up"
+                      size={20}
+                      color={COLORS.white}
+                    />
+                    <Text style={styles.btnText}>Open Gate</Text>
+                  </LinearGradient>
                 </TouchableOpacity>
               ) : (
                 <View style={styles.openedBadge}>
                   <MaterialCommunityIcons
-                    name="check-circle"
-                    size={18}
+                    name="check-decagram"
+                    size={20}
                     color={COLORS.success}
                   />
-                  <Text style={styles.openedText}>Gate Opened</Text>
+                  <Text style={styles.openedText}>Access Granted</Text>
                 </View>
               )}
 
-              {/* FIXED: Passed item.parkingLotId instead of item.parkingLot */}
-              <TouchableOpacity style={styles.mapBtn} onPress={() => openMap(item.parkingLotId)}>
-                <MaterialCommunityIcons
-                  name="map-marker-radius"
-                  size={24}
-                  color={COLORS.primary}
-                />
+              <TouchableOpacity
+                style={styles.mapBtn}
+                onPress={() => openMap(item.parkingLotId)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="navigate" size={22} color={COLORS.primary} />
               </TouchableOpacity>
             </View>
           )}
@@ -299,49 +347,57 @@ const UserReservations = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+      <StatusBar
+        barStyle="light-content"
+        translucent
+        backgroundColor="transparent"
+      />
 
       <LinearGradient
         colors={[COLORS.primary, COLORS.primaryDark]}
-        style={styles.header}
+        style={[styles.headerGradient, { paddingTop: insets.top + SPACING.s }]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        <View>
-          <View style={styles.headerContent}>
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={styles.backBtn}
-            >
-              <MaterialCommunityIcons
-                name="arrow-left"
-                size={24}
-                color={COLORS.white}
-              />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>My Reservations</Text>
-            <View style={{ width: 40}} />
-          </View>
+        <View style={styles.headerContent}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backBtn}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="chevron-back" size={24} color={COLORS.white} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>My Tickets</Text>
+          <View style={{ width: 40 }} />
         </View>
       </LinearGradient>
 
-      <View style={styles.filterContainer}>
-        <View style={styles.chipRow}>
+      <View style={styles.filterWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipScroll}
+        >
           {["all", "today", "upcoming", "past"].map((f) => (
             <FilterChip
               key={f}
-              label={f.charAt(0).toUpperCase() + f.slice(1)}
+              label={
+                f === "all"
+                  ? "All Tickets"
+                  : f.charAt(0).toUpperCase() + f.slice(1)
+              }
               active={filter === f}
               onPress={() => setFilter(f)}
             />
           ))}
-        </View>
+        </ScrollView>
       </View>
 
       <FlatList
         data={filtered}
         keyExtractor={(item) => item._id}
         renderItem={renderItem}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -352,13 +408,21 @@ const UserReservations = ({ navigation }) => {
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           loading ? (
-            <ActivityIndicator
-              size="large"
-              color={COLORS.primary}
-              style={{ marginTop: 50 }}
-            />
+            <View style={styles.emptyContainer}>
+              <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
           ) : (
-            <Text style={styles.emptyText}>No tickets found.</Text>
+            <View style={styles.emptyContainer}>
+              <MaterialCommunityIcons
+                name="ticket-confirmation-outline"
+                size={64}
+                color={COLORS.gray300}
+              />
+              <Text style={styles.emptyTitle}>No tickets found</Text>
+              <Text style={styles.emptySub}>
+                You don't have any reservations in this category.
+              </Text>
+            </View>
           )
         }
       />
@@ -372,21 +436,21 @@ const UserReservations = ({ navigation }) => {
                   source={require("../assets/gateAnimation.json")}
                   autoPlay
                   loop={false}
-                  style={{ width: 150, height: 150 }}
+                  style={{ width: 140, height: 140 }}
                 />
-                <Text
-                  style={[
-                    styles.loadingText,
-                    { color: COLORS.success, fontSize: 18, marginTop: 0 },
-                  ]}
-                >
-                  Gate Opened!
-                </Text>
+                <Text style={styles.successText}>Access Granted</Text>
               </>
             ) : (
               <>
-                <ActivityIndicator size="large" color={COLORS.primary} />
-                <Text style={styles.loadingText}>Connecting to Gate...</Text>
+                <ActivityIndicator
+                  size="large"
+                  color={COLORS.primary}
+                  style={{ marginBottom: 16 }}
+                />
+                <Text style={styles.loadingTitle}>Connecting to Gate...</Text>
+                <Text style={styles.loadingSub}>
+                  Please remain near the entrance
+                </Text>
               </>
             )}
           </View>
@@ -407,13 +471,12 @@ export default UserReservations;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.gray100,
+    backgroundColor: "#F4F6F8",
   },
-  header: {
-    paddingTop: 9,
+  headerGradient: {
     paddingBottom: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
     ...SHADOWS.medium,
   },
   headerContent: {
@@ -424,167 +487,263 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: "bold",
+    fontWeight: "800",
     color: COLORS.white,
+    letterSpacing: 0.5,
   },
   backBtn: {
-    padding: 8,
+    width: 40,
+    height: 40,
     backgroundColor: "rgba(255,255,255,0.2)",
-    borderRadius: 12,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  filterContainer: {
-    marginTop: 15,
-    paddingHorizontal: 15,
-    marginBottom: 10,
+  filterWrapper: {
+    marginTop: 16,
+    marginBottom: 8,
   },
-  chipRow: {
-    flexDirection: "row",
+  chipScroll: {
+    paddingHorizontal: 20,
     gap: 10,
   },
   filterChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 24,
     backgroundColor: COLORS.white,
     borderWidth: 1,
     borderColor: COLORS.gray200,
+    ...SHADOWS.light,
   },
   activeFilterChip: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+    backgroundColor: COLORS.gray900,
+    borderColor: COLORS.gray900,
   },
   filterText: {
-    fontSize: 12,
+    fontSize: 13,
     color: COLORS.gray600,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   activeFilterText: {
     color: COLORS.white,
   },
   listContent: {
     padding: 20,
-    paddingBottom: 50,
+    paddingBottom: 80,
+  },
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 60,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: COLORS.gray700,
+    marginTop: 16,
+  },
+  emptySub: {
+    fontSize: 14,
+    color: COLORS.gray500,
+    marginTop: 8,
+    textAlign: "center",
   },
   ticketCard: {
     backgroundColor: COLORS.white,
-    borderRadius: 16,
+    borderRadius: 24,
     marginBottom: 20,
-    overflow: "hidden",
-    ...SHADOWS.small,
+    ...SHADOWS.medium,
   },
   pastTicket: {
-    opacity: 0.7,
+    opacity: 0.65,
   },
   ticketHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    padding: 12,
+    alignItems: "center",
+    paddingTop: 20,
     paddingHorizontal: 20,
+    paddingBottom: 16,
   },
-  ticketTitle: {
-    color: COLORS.white,
-    fontWeight: "bold",
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 6,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  slotBadge: {
+    backgroundColor: COLORS.gray100,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  slotBadgeText: {
+    color: COLORS.gray900,
+    fontWeight: "800",
     fontSize: 14,
-    textTransform: "uppercase",
-  },
-  ticketSlot: {
-    color: COLORS.white,
-    fontWeight: "bold",
-  },
-  ticketBody: {
-    padding: 20,
   },
   locationContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 5,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
   },
-  locationText: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: COLORS.text,
-    marginLeft: 6,
-  },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  infoBlock: {
-    alignItems: "flex-start",
-  },
-  label: {
-    fontSize: 10,
-    color: COLORS.gray500,
-    marginBottom: 4,
-    fontWeight: "bold",
-  },
-  value: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: COLORS.text,
-  },
-  date: {
-    fontSize: 12,
-    color: COLORS.gray500,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.gray200,
-    marginVertical: 15,
-    borderStyle: "dashed",
-    borderWidth: 1,
-    borderColor: COLORS.gray200,
-  },
-  actionRow: {
-    marginTop: 20,
-    flexDirection: "row",
-    gap: 15,
-  },
-  actionBtn: {
-    flex: 1,
-    backgroundColor: COLORS.primary,
-    paddingVertical: 12,
-    borderRadius: 10,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 8,
-  },
-  disabledBtn: {
-    backgroundColor: COLORS.gray400,
-  },
-  btnText: {
-    color: COLORS.white,
-    fontWeight: "bold",
-    fontSize: 14,
-  },
-  mapBtn: {
-    width: 48,
-    height: 48,
+  iconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: COLORS.primaryLight,
     justifyContent: "center",
     alignItems: "center",
+    marginRight: 12,
+  },
+  locationText: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: "800",
+    color: COLORS.gray900,
+  },
+  separatorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 20,
+    overflow: "hidden",
+  },
+  separatorNotchLeft: {
+    width: 20,
+    height: 20,
     borderRadius: 10,
+    backgroundColor: "#F4F6F8",
+    marginLeft: -10,
+  },
+  dashedLine: {
+    flex: 1,
+    height: 1,
+    borderWidth: 1,
+    borderColor: COLORS.gray300,
+    borderStyle: "dashed",
+    marginHorizontal: 4,
+  },
+  separatorNotchRight: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#F4F6F8",
+    marginRight: -10,
+  },
+  ticketBody: {
+    padding: 20,
+    paddingTop: 10,
+  },
+  timeRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  timeBlock: {
+    flex: 1,
+  },
+  durationIndicator: {
+    paddingHorizontal: 10,
+  },
+  timeLabel: {
+    fontSize: 10,
+    color: COLORS.gray500,
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+  timeValue: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: COLORS.gray900,
+  },
+  dateValue: {
+    fontSize: 13,
+    color: COLORS.gray500,
+    fontWeight: "500",
+    marginTop: 2,
+  },
+  metaRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    backgroundColor: COLORS.gray50,
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 20,
+  },
+  metaLabel: {
+    fontSize: 10,
+    color: COLORS.gray500,
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+  metaValue: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: COLORS.gray900,
+  },
+  actionRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  actionBtn: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: "hidden",
+    ...SHADOWS.small,
+  },
+  disabledBtn: {
+    opacity: 0.9,
+  },
+  gradientBtn: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 14,
+    gap: 8,
+  },
+  btnText: {
+    color: COLORS.white,
+    fontWeight: "800",
+    fontSize: 15,
+  },
+  mapBtn: {
+    width: 52,
+    height: 52,
+    backgroundColor: COLORS.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 16,
   },
   openedBadge: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
+    gap: 8,
     backgroundColor: "#E8F5E9",
-    borderRadius: 10,
-    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.success,
   },
   openedText: {
     color: COLORS.success,
-    fontWeight: "bold",
-  },
-  emptyText: {
-    textAlign: "center",
-    marginTop: 50,
-    color: COLORS.gray500,
+    fontWeight: "800",
+    fontSize: 15,
   },
   loadingOverlay: {
     position: "absolute",
@@ -592,24 +751,33 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.6)",
     justifyContent: "center",
     alignItems: "center",
-    zIndex: 20,
+    zIndex: 999,
   },
   loadingBox: {
     backgroundColor: COLORS.white,
-    padding: 20,
-    borderRadius: 16,
+    padding: 30,
+    borderRadius: 24,
     alignItems: "center",
-    ...SHADOWS.medium,
-    minWidth: 150,
-    minHeight: 150,
-    justifyContent: "center",
+    ...SHADOWS.dark,
+    minWidth: 220,
   },
-  loadingText: {
-    marginTop: 10,
-    color: COLORS.gray700,
-    fontWeight: "600",
+  loadingTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: COLORS.gray900,
+  },
+  loadingSub: {
+    fontSize: 13,
+    color: COLORS.gray500,
+    marginTop: 4,
+  },
+  successText: {
+    color: COLORS.success,
+    fontSize: 20,
+    fontWeight: "900",
+    marginTop: -10,
   },
 });
