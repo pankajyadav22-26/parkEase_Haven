@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useMemo,
   useEffect,
+  useRef,
 } from "react";
 import {
   StyleSheet,
@@ -24,7 +25,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { useStripe } from "@stripe/stripe-react-native";
 import axios from "axios";
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { format, differenceInHours, differenceInMinutes } from "date-fns";
@@ -32,9 +33,8 @@ import { format, differenceInHours, differenceInMinutes } from "date-fns";
 import { AuthContext } from "../contexts/AuthContext";
 import { ParkingContext } from "../contexts/ParkingContext";
 import { backendUrl } from "../constants";
-import { COLORS, SIZES, SHADOWS, SPACING } from "../constants/theme";
+import { COLORS, SHADOWS, SPACING } from "../constants/theme";
 
-import BackBtn from "../components/BackBtn";
 import InputField from "../components/InputField";
 
 const { width } = Dimensions.get("window");
@@ -45,17 +45,15 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
   const dLat = (lat2 - lat1) * (Math.PI / 180);
   const dLon = (lon2 - lon1) * (Math.PI / 180);
   const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLat / 2) ** 2 +
     Math.cos(lat1 * (Math.PI / 180)) *
       Math.cos(lat2 * (Math.PI / 180)) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
+      Math.sin(dLon / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 };
 
 const Reservation = ({ navigation }) => {
-  const insets = useSafeAreaInsets();
   const { user, isLoggedIn } = useContext(AuthContext);
   const { parkingLots, selectedLot, setSelectedLot, userLocation } =
     useContext(ParkingContext);
@@ -77,20 +75,32 @@ const Reservation = ({ navigation }) => {
 
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
+  const progressAnim = useRef(new Animated.Value(0.33)).current;
+
+  useEffect(() => {
+    Animated.spring(progressAnim, {
+      toValue: currentStep === 1 ? 0.33 : currentStep === 2 ? 0.66 : 1,
+      friction: 8,
+      tension: 40,
+      useNativeDriver: false,
+    }).start();
+  }, [currentStep]);
+
   const sortedLots = useMemo(() => {
     if (!parkingLots || parkingLots.length === 0) return [];
-    const lotsWithDistance = parkingLots.map((lot) => {
-      const distance = userLocation
-        ? getDistance(
-            userLocation.latitude,
-            userLocation.longitude,
-            lot.location.coordinates[0],
-            lot.location.coordinates[1],
-          )
-        : Infinity;
-      return { ...lot, distance };
-    });
-    return lotsWithDistance.sort((a, b) => a.distance - b.distance);
+    return parkingLots
+      .map((lot) => ({
+        ...lot,
+        distance: userLocation
+          ? getDistance(
+              userLocation.latitude,
+              userLocation.longitude,
+              lot.location.coordinates[0],
+              lot.location.coordinates[1],
+            )
+          : Infinity,
+      }))
+      .sort((a, b) => a.distance - b.distance);
   }, [parkingLots, userLocation]);
 
   useEffect(() => {
@@ -178,7 +188,6 @@ const Reservation = ({ navigation }) => {
         },
       );
       const slotData = await slotRes.json();
-
       setAvailableSlots(slotData.availableSlots || []);
       setCurrentStep(2);
     } catch (error) {
@@ -292,46 +301,17 @@ const Reservation = ({ navigation }) => {
     );
   }
 
-  const StepIndicator = () => (
-    <View style={styles.stepperContainer}>
-      {[1, 2, 3].map((step, index) => (
-        <React.Fragment key={step}>
-          <View
-            style={[
-              styles.stepCircle,
-              currentStep >= step && styles.stepCircleActive,
-            ]}
-          >
-            {currentStep > step ? (
-              <Ionicons name="checkmark" size={14} color={COLORS.white} />
-            ) : (
-              <Text
-                style={[
-                  styles.stepText,
-                  currentStep >= step && styles.stepTextActive,
-                ]}
-              >
-                {step}
-              </Text>
-            )}
-          </View>
-          {index < 2 && (
-            <View
-              style={[
-                styles.stepLine,
-                currentStep > step && styles.stepLineActive,
-              ]}
-            />
-          )}
-        </React.Fragment>
-      ))}
-    </View>
-  );
+  const progressWidth = progressAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0%", "100%"],
+  });
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+
+    <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
       <StatusBar barStyle="dark-content" />
 
+      {}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() =>
@@ -341,31 +321,56 @@ const Reservation = ({ navigation }) => {
           }
           style={styles.backBtn}
         >
-          <Ionicons name="chevron-back" size={24} color={COLORS.gray900} />
+          <Ionicons name="arrow-back" size={24} color={COLORS.gray900} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
           {currentStep === 1
-            ? "Schedule"
+            ? "Plan Parking"
             : currentStep === 2
-              ? "Pick a Spot"
-              : "Checkout"}
+              ? "Select Space"
+              : "Confirm"}
         </Text>
         <View style={{ width: 40 }} />
       </View>
 
-      <StepIndicator />
+      {}
+      <View style={styles.progressContainer}>
+        <View style={styles.progressTrack}>
+          <Animated.View
+            style={[styles.progressFill, { width: progressWidth }]}
+          />
+        </View>
+        <View style={styles.progressLabels}>
+          <Text
+            style={[styles.pLabel, currentStep >= 1 && styles.pLabelActive]}
+          >
+            Time
+          </Text>
+          <Text
+            style={[styles.pLabel, currentStep >= 2 && styles.pLabelActive]}
+          >
+            Spot
+          </Text>
+          <Text
+            style={[styles.pLabel, currentStep >= 3 && styles.pLabelActive]}
+          >
+            Pay
+          </Text>
+        </View>
+      </View>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={{ flex: 1 }}
+        style={styles.flex1}
       >
+        {}
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
           {currentStep === 1 && (
             <Animated.View style={styles.stepContainer}>
-              <Text style={styles.sectionTitle}>Select Location</Text>
+              <Text style={styles.sectionTitle}>Where to?</Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -376,121 +381,90 @@ const Reservation = ({ navigation }) => {
                   return (
                     <TouchableOpacity
                       key={lot._id}
-                      activeOpacity={0.7}
+                      activeOpacity={0.8}
                       style={[
-                        styles.locationCard,
-                        isSelected && styles.locationCardActive,
+                        styles.locCard,
+                        isSelected && styles.locCardActive,
                       ]}
                       onPress={() => {
                         Haptics.selectionAsync();
                         setSelectedLot(lot);
                       }}
                     >
-                      <View
+                      <MaterialCommunityIcons
+                        name="map-marker-radius"
+                        size={28}
+                        color={isSelected ? COLORS.white : COLORS.primary}
+                        style={{ marginBottom: 12 }}
+                      />
+                      <Text
+                        style={[styles.locName, isSelected && styles.textWhite]}
+                        numberOfLines={1}
+                      >
+                        {lot.name}
+                      </Text>
+                      <Text
                         style={[
-                          styles.iconWrap,
-                          isSelected && styles.iconWrapActive,
+                          styles.locDist,
+                          isSelected && styles.textWhite70,
                         ]}
                       >
-                        <Ionicons
-                          name="business"
-                          size={20}
-                          color={isSelected ? COLORS.white : COLORS.primary}
-                        />
-                      </View>
-                      <View>
-                        <Text
-                          style={[
-                            styles.locName,
-                            isSelected && styles.textWhite,
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {lot.name}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.locDist,
-                            isSelected && styles.textWhite70,
-                          ]}
-                        >
-                          {lot.distance === Infinity
-                            ? "..."
-                            : `${lot.distance.toFixed(1)} km away`}
-                        </Text>
-                      </View>
+                        {lot.distance === Infinity
+                          ? "..."
+                          : `${lot.distance.toFixed(1)} km`}
+                      </Text>
                     </TouchableOpacity>
                   );
                 })}
               </ScrollView>
 
-              <Text style={[styles.sectionTitle, { marginTop: SPACING.l }]}>
-                Duration
+              <Text style={[styles.sectionTitle, { marginTop: SPACING.xl }]}>
+                When?
               </Text>
-              <View style={styles.timeBox}>
+
+              <View style={styles.timeSelectionWrapper}>
                 <TouchableOpacity
-                  style={styles.timeRow}
+                  style={styles.timeBlock}
                   onPress={() => initiatePicker("start")}
+                  activeOpacity={0.7}
                 >
-                  <View style={styles.timeIcon}>
-                    <MaterialCommunityIcons
-                      name="clock-in"
-                      size={22}
-                      color={COLORS.primary}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.timeLabel}>Arrive After</Text>
-                    <Text style={styles.timeValue}>
-                      {format(startTime, "MMM dd, hh:mm a")}
-                    </Text>
-                  </View>
-                  <Ionicons
-                    name="chevron-down"
-                    size={20}
-                    color={COLORS.gray400}
-                  />
+                  <Text style={styles.timeLabel}>Arrive</Text>
+                  <Text style={styles.timeValueMain}>
+                    {format(startTime, "hh:mm a")}
+                  </Text>
+                  <Text style={styles.timeValueSub}>
+                    {format(startTime, "MMM dd, yyyy")}
+                  </Text>
                 </TouchableOpacity>
-                <View style={styles.divider} />
-                <TouchableOpacity
-                  style={styles.timeRow}
-                  onPress={() => initiatePicker("end")}
-                >
-                  <View
-                    style={[
-                      styles.timeIcon,
-                      { backgroundColor: COLORS.error + "15" },
-                    ]}
-                  >
-                    <MaterialCommunityIcons
-                      name="clock-out"
-                      size={22}
-                      color={COLORS.error}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.timeLabel}>Leave By</Text>
-                    <Text style={styles.timeValue}>
-                      {format(endTime, "MMM dd, hh:mm a")}
-                    </Text>
-                  </View>
+
+                <View style={styles.timeArrow}>
                   <Ionicons
-                    name="chevron-down"
-                    size={20}
+                    name="arrow-forward"
+                    size={24}
                     color={COLORS.gray400}
                   />
+                </View>
+
+                <TouchableOpacity
+                  style={styles.timeBlock}
+                  onPress={() => initiatePicker("end")}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.timeLabel}>Leave</Text>
+                  <Text style={styles.timeValueMain}>
+                    {format(endTime, "hh:mm a")}
+                  </Text>
+                  <Text style={styles.timeValueSub}>
+                    {format(endTime, "MMM dd, yyyy")}
+                  </Text>
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.infoPill}>
-                <Ionicons
-                  name="timer-outline"
-                  size={18}
-                  color={COLORS.gray600}
-                />
-                <Text style={styles.infoPillText}>
-                  Total Duration:{" "}
-                  <Text style={{ fontWeight: "800", color: COLORS.gray900 }}>
+              <View style={styles.durationPill}>
+                <Ionicons name="time" size={16} color={COLORS.gray600} />
+                <Text style={styles.durationText}>
+                  Parking for{" "}
+                  <Text style={styles.durationBold}>
                     {differenceInHours(endTime, startTime)}h{" "}
                     {differenceInMinutes(endTime, startTime) % 60}m
                   </Text>
@@ -501,9 +475,15 @@ const Reservation = ({ navigation }) => {
 
           {currentStep === 2 && (
             <View style={styles.stepContainer}>
-              <Text style={styles.sectionTitle}>
-                {availableSlots.length} Spots Available
-              </Text>
+              <View style={styles.spotHeader}>
+                <Text style={styles.sectionTitle}>Available Spots</Text>
+                <View style={styles.spotCountBadge}>
+                  <Text style={styles.spotCountText}>
+                    {availableSlots.length}
+                  </Text>
+                </View>
+              </View>
+
               <View style={styles.slotsGrid}>
                 {availableSlots.length > 0 ? (
                   availableSlots.map((slot) => {
@@ -516,6 +496,7 @@ const Reservation = ({ navigation }) => {
                           isSelected && styles.slotItemActive,
                         ]}
                         onPress={() => selectSlot(slot)}
+                        activeOpacity={0.7}
                       >
                         <Text
                           style={[
@@ -525,15 +506,6 @@ const Reservation = ({ navigation }) => {
                         >
                           {slot}
                         </Text>
-                        {isSelected && (
-                          <View style={styles.slotCheck}>
-                            <Ionicons
-                              name="checkmark"
-                              size={12}
-                              color={COLORS.primary}
-                            />
-                          </View>
-                        )}
                       </TouchableOpacity>
                     );
                   })
@@ -545,7 +517,7 @@ const Reservation = ({ navigation }) => {
                       color={COLORS.gray300}
                     />
                     <Text style={styles.emptyText}>
-                      No slots available for this time.
+                      No availability for selected times.
                     </Text>
                   </View>
                 )}
@@ -555,48 +527,65 @@ const Reservation = ({ navigation }) => {
 
           {currentStep === 3 && (
             <View style={styles.stepContainer}>
-              <View style={styles.ticketCard}>
-                <View style={styles.ticketHeader}>
-                  <Text style={styles.ticketLot}>{selectedLot?.name}</Text>
-                  <View style={styles.ticketBadge}>
-                    <Text style={styles.ticketSlot}>{selectedSlot}</Text>
-                  </View>
-                </View>
-                <View style={styles.ticketDashed} />
-                <View style={styles.ticketRow}>
+              {}
+              <View style={styles.walletTicket}>
+                <View style={styles.ticketTop}>
                   <View>
-                    <Text style={styles.ticketLabel}>Date</Text>
-                    <Text style={styles.ticketVal}>
-                      {format(startTime, "MMM dd, yyyy")}
-                    </Text>
+                    <Text style={styles.tktHeader}>PARKING PASS</Text>
+                    <Text style={styles.tktLotName}>{selectedLot?.name}</Text>
                   </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                    <Text style={styles.ticketLabel}>Duration</Text>
-                    <Text style={styles.ticketVal}>
-                      {format(startTime, "HH:mm")} - {format(endTime, "HH:mm")}
-                    </Text>
+                  <View style={styles.tktBadge}>
+                    <Text style={styles.tktBadgeText}>Spot {selectedSlot}</Text>
                   </View>
                 </View>
-                <View style={styles.ticketDashed} />
-                <View style={styles.ticketRow}>
-                  <Text style={styles.ticketTotalLabel}>Total Amount</Text>
-                  <Text style={styles.ticketTotalVal}>₹{payment}</Text>
+
+                {}
+                <View style={styles.perforatedLineContainer}>
+                  <View style={styles.notchLeft} />
+                  <View style={styles.dashedLine} />
+                  <View style={styles.notchRight} />
+                </View>
+
+                <View style={styles.ticketBottom}>
+                  <View style={styles.tktDataRow}>
+                    <View>
+                      <Text style={styles.tktLabel}>ENTRY</Text>
+                      <Text style={styles.tktValue}>
+                        {format(startTime, "MMM dd, HH:mm")}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: "flex-end" }}>
+                      <Text style={styles.tktLabel}>EXIT</Text>
+                      <Text style={styles.tktValue}>
+                        {format(endTime, "MMM dd, HH:mm")}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.tktTotalRow}>
+                    <Text style={styles.tktTotalLabel}>Amount Due</Text>
+                    <Text style={styles.tktTotalValue}>₹{payment}</Text>
+                  </View>
                 </View>
               </View>
 
-              <Text style={[styles.sectionTitle, { marginTop: SPACING.l }]}>
-                Driver Details
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { marginTop: SPACING.xl, marginBottom: SPACING.m },
+                ]}
+              >
+                Vehicle & Driver
               </Text>
               <InputField
-                label="Full Name"
-                iconName="account-outline"
+                label="Driver Name"
+                iconName="account"
                 placeholder="Enter name"
                 value={name}
                 onChangeText={setName}
               />
               <InputField
-                label="Vehicle Number"
-                iconName="car-outline"
+                label="License Plate"
+                iconName="car-back"
                 placeholder="e.g. KA-01-AB-1234"
                 value={carNumber}
                 onChangeText={setCarNumber}
@@ -606,12 +595,8 @@ const Reservation = ({ navigation }) => {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <View
-        style={[
-          styles.bottomSticky,
-          { paddingBottom: Math.max(insets.bottom, 40) },
-        ]}
-      >
+      {}
+      <View style={styles.dockedFooter}>
         <TouchableOpacity
           style={[
             styles.primaryBtn,
@@ -630,6 +615,7 @@ const Reservation = ({ navigation }) => {
             else if (currentStep === 2) setCurrentStep(3);
             else handlePayment();
           }}
+          activeOpacity={0.8}
         >
           <LinearGradient
             colors={[COLORS.primary, COLORS.primaryDark]}
@@ -643,9 +629,9 @@ const Reservation = ({ navigation }) => {
               <>
                 <Text style={styles.btnText}>
                   {currentStep === 1
-                    ? "Find Parking Spots"
+                    ? "Find Spots"
                     : currentStep === 2
-                      ? `Book Spot ${selectedSlot || ""}`
+                      ? `Confirm Spot ${selectedSlot || ""}`
                       : `Pay ₹${payment}`}
                 </Text>
                 <Ionicons
@@ -668,274 +654,292 @@ const Reservation = ({ navigation }) => {
           minimumDate={new Date()}
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 };
 
 export default Reservation;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.white },
-  centerContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: COLORS.white,
-  },
-  authMessage: {
-    fontSize: 16,
-    color: COLORS.gray600,
-    marginTop: 16,
-    marginBottom: 24,
-    fontWeight: "500",
-  },
+  safeArea: { flex: 1, backgroundColor: "#F9FAFB" }, 
+
+  flex1: { flex: 1 },
+  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+  authMessage: { fontSize: 16, color: COLORS.gray600, marginVertical: 20 },
   authBtn: {
     backgroundColor: COLORS.primary,
     paddingHorizontal: 30,
     paddingVertical: 14,
     borderRadius: 12,
   },
-  authBtnText: { color: COLORS.white, fontWeight: "bold", fontSize: 16 },
+  authBtnText: { color: COLORS.white, fontWeight: "bold" },
 
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingVertical: 10,
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.gray100,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.white,
     justifyContent: "center",
     alignItems: "center",
+    ...SHADOWS.light,
   },
-  headerTitle: { fontSize: 18, fontWeight: "800", color: COLORS.gray900 },
+  headerTitle: { fontSize: 18, fontWeight: "900", color: COLORS.gray900 },
 
-  stepperContainer: {
+  progressContainer: { paddingHorizontal: 30, paddingVertical: 15 },
+  progressTrack: {
+    height: 6,
+    backgroundColor: COLORS.gray200,
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: COLORS.primary,
+    borderRadius: 3,
+  },
+  progressLabels: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 15,
-    paddingHorizontal: 40,
+    justifyContent: "space-between",
+    marginTop: 8,
   },
-  stepCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.gray200,
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 2,
-  },
-  stepCircleActive: { backgroundColor: COLORS.primary, ...SHADOWS.small },
-  stepText: { fontSize: 12, fontWeight: "700", color: COLORS.gray500 },
-  stepTextActive: { color: COLORS.white },
-  stepLine: {
-    flex: 1,
-    height: 3,
-    backgroundColor: COLORS.gray200,
-    marginHorizontal: -5,
-    zIndex: 1,
-  },
-  stepLineActive: { backgroundColor: COLORS.primary },
+  pLabel: { fontSize: 11, fontWeight: "700", color: COLORS.gray400 },
+  pLabelActive: { color: COLORS.primaryDark },
 
-  scrollContent: { paddingHorizontal: 20, paddingBottom: 120 },
-  stepContainer: { flex: 1, paddingTop: 10 },
+  scrollContent: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 40 },
+  stepContainer: { flex: 1 },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: "800",
+    fontSize: 20,
+    fontWeight: "900",
     color: COLORS.gray900,
     marginBottom: 16,
   },
 
-  /* Step 1 Styles */
-  locationScroll: { gap: 12, paddingRight: 20 },
-  locationCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.gray50,
-    padding: 12,
-    borderRadius: 16,
+  locationScroll: { gap: 16, paddingRight: 20, paddingVertical: 10 },
+  locCard: {
+    width: 140,
+    backgroundColor: COLORS.white,
+    padding: 16,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: COLORS.gray200,
-    width: 220,
+    ...SHADOWS.light,
   },
-  locationCardActive: {
+  locCardActive: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primaryDark,
     ...SHADOWS.medium,
   },
-  iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: COLORS.white,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-    ...SHADOWS.light,
+  locName: {
+    fontSize: 15,
+    fontWeight: "900",
+    color: COLORS.gray900,
+    marginBottom: 4,
   },
-  iconWrapActive: { backgroundColor: "rgba(255,255,255,0.2)" },
-  locName: { fontSize: 14, fontWeight: "800", color: COLORS.gray900 },
-  locDist: { fontSize: 12, color: COLORS.gray500, marginTop: 2 },
+  locDist: { fontSize: 12, color: COLORS.gray500, fontWeight: "600" },
   textWhite: { color: COLORS.white },
-  textWhite70: { color: "rgba(255,255,255,0.7)" },
+  textWhite70: { color: "rgba(255,255,255,0.8)" },
 
-  timeBox: {
-    backgroundColor: COLORS.gray50,
+  timeSelectionWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  timeBlock: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    padding: 16,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: COLORS.gray200,
-    overflow: "hidden",
+    ...SHADOWS.light,
   },
-  timeRow: { flexDirection: "row", alignItems: "center", padding: 16 },
-  timeIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: COLORS.primary + "15",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 16,
-  },
+  timeArrow: { paddingHorizontal: 10 },
   timeLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.gray500,
-    fontWeight: "600",
-    textTransform: "uppercase",
-  },
-  timeValue: {
-    fontSize: 16,
     fontWeight: "800",
-    color: COLORS.gray900,
-    marginTop: 2,
+    textTransform: "uppercase",
+    marginBottom: 6,
   },
-  divider: { height: 1, backgroundColor: COLORS.gray200, marginLeft: 72 },
-  infoPill: {
+  timeValueMain: { fontSize: 20, fontWeight: "900", color: COLORS.gray900 },
+  timeValueSub: {
+    fontSize: 12,
+    color: COLORS.primary,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+
+  durationPill: {
     flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
-    backgroundColor: COLORS.gray100,
+    alignSelf: "center",
+    backgroundColor: "#E2E8F0",
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderRadius: 20,
-    marginTop: 16,
+    marginTop: 24,
   },
-  infoPillText: { fontSize: 13, color: COLORS.gray600, marginLeft: 8 },
+  durationText: { fontSize: 13, color: COLORS.gray700, marginLeft: 8 },
+  durationBold: { fontWeight: "900", color: COLORS.gray900 },
 
-  /* Step 2 Styles */
+  spotHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  spotCountBadge: {
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  spotCountText: { color: COLORS.primary, fontWeight: "900", fontSize: 14 },
   slotsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   slotItem: {
     width: (width - 40 - 24) / 3,
-    height: 60,
-    backgroundColor: COLORS.gray50,
-    borderRadius: 12,
+    height: 64,
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
     borderColor: COLORS.gray200,
+    ...SHADOWS.light,
   },
   slotItemActive: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primaryDark,
     ...SHADOWS.medium,
   },
-  slotText: { fontSize: 16, fontWeight: "800", color: COLORS.gray600 },
-  slotCheck: {
-    position: "absolute",
-    top: -6,
-    right: -6,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: COLORS.white,
-    justifyContent: "center",
-    alignItems: "center",
-    ...SHADOWS.small,
-  },
+  slotText: { fontSize: 16, fontWeight: "900", color: COLORS.gray700 },
   emptyState: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 40,
+    paddingVertical: 60,
     width: "100%",
   },
-  emptyText: { color: COLORS.gray500, marginTop: 12, fontWeight: "500" },
+  emptyText: { color: COLORS.gray500, marginTop: 12, fontWeight: "600" },
 
-  /* Step 3 Styles */
-  ticketCard: {
-    backgroundColor: COLORS.gray50,
+  walletTicket: {
+    backgroundColor: COLORS.white,
     borderRadius: 24,
-    borderWidth: 1,
-    borderColor: COLORS.gray200,
-    padding: 24,
-    ...SHADOWS.small,
+    ...SHADOWS.medium,
+    overflow: "hidden",
   },
-  ticketHeader: {
+  ticketTop: {
+    padding: 24,
+    backgroundColor: COLORS.gray900,
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
   },
-  ticketLot: {
-    fontSize: 20,
+  tktHeader: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+  },
+  tktLotName: {
+    color: COLORS.white,
+    fontSize: 22,
     fontWeight: "900",
-    color: COLORS.gray900,
-    flex: 1,
-    paddingRight: 10,
+    marginTop: 4,
   },
-  ticketBadge: {
-    backgroundColor: COLORS.primary,
+  tktBadge: {
+    backgroundColor: COLORS.white,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingVertical: 8,
+    borderRadius: 12,
   },
-  ticketSlot: { color: COLORS.white, fontWeight: "800", fontSize: 14 },
-  ticketDashed: {
+  tktBadgeText: { color: COLORS.gray900, fontWeight: "900", fontSize: 14 },
+
+  perforatedLineContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 20,
+    backgroundColor: COLORS.white,
+    marginTop: -10,
+  },
+  notchLeft: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#F9FAFB",
+    marginLeft: -10,
+  },
+  dashedLine: {
+    flex: 1,
     height: 1,
     borderWidth: 1,
     borderColor: COLORS.gray300,
     borderStyle: "dashed",
-    marginVertical: 20,
+    marginHorizontal: 10,
   },
-  ticketRow: { flexDirection: "row", justifyContent: "space-between" },
-  ticketLabel: {
-    fontSize: 11,
+  notchRight: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#F9FAFB",
+    marginRight: -10,
+  },
+
+  ticketBottom: { padding: 24, backgroundColor: COLORS.white },
+  tktDataRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 20,
+  },
+  tktLabel: {
+    fontSize: 10,
     color: COLORS.gray500,
-    textTransform: "uppercase",
-    fontWeight: "700",
+    fontWeight: "800",
+    letterSpacing: 0.5,
     marginBottom: 4,
   },
-  ticketVal: { fontSize: 15, fontWeight: "800", color: COLORS.gray900 },
-  ticketTotalLabel: { fontSize: 16, fontWeight: "800", color: COLORS.gray900 },
-  ticketTotalVal: { fontSize: 24, fontWeight: "900", color: COLORS.primary },
+  tktValue: { fontSize: 15, fontWeight: "900", color: COLORS.gray900 },
+  tktTotalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderColor: COLORS.gray100,
+  },
+  tktTotalLabel: { fontSize: 14, fontWeight: "800", color: COLORS.gray600 },
+  tktTotalValue: {
+    fontSize: 28,
+    fontWeight: "900",
+    color: COLORS.primary,
+    letterSpacing: -1,
+  },
 
-  bottomSticky: {
-    position: "relative",
-    bottom: 0,
-    left: 0,
-    right: 0,
+  dockedFooter: {
     backgroundColor: COLORS.white,
     paddingHorizontal: 20,
     paddingTop: 16,
+    paddingBottom: 16, 
+
     borderTopWidth: 1,
-    borderColor: COLORS.gray200,
+    borderColor: "rgba(0,0,0,0.05)",
+    marginBottom: 25,
   },
-  primaryBtn: {
-    height: 56,
-    borderRadius: 16,
-    overflow: "hidden",
-    ...SHADOWS.medium,
-  },
+  primaryBtn: { height: 60, borderRadius: 20, overflow: "hidden" },
   gradientFill: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: 12,
   },
-  btnText: { color: COLORS.white, fontSize: 16, fontWeight: "800" },
-  btnDisabled: { opacity: 0.5 },
+  btnText: { color: COLORS.white, fontSize: 17, fontWeight: "900" },
+  btnDisabled: { opacity: 0.6 },
 });

@@ -99,7 +99,6 @@ const Home = ({ navigation }) => {
     if (isFocused && selectedLot) {
       fetchSlots();
 
-      // Entrance Fade
       fadeAnim.setValue(0);
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -107,7 +106,6 @@ const Home = ({ navigation }) => {
         useNativeDriver: true,
       }).start();
 
-      // Breathing animation for available slots
       Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, {
@@ -145,7 +143,7 @@ const Home = ({ navigation }) => {
         backgroundColor="transparent"
       />
 
-      {/* Deep Gradient Header */}
+      {}
       <LinearGradient
         colors={[COLORS.primary, COLORS.primaryDark]}
         style={[styles.headerGradient, { paddingTop: insets.top + SPACING.s }]}
@@ -161,7 +159,7 @@ const Home = ({ navigation }) => {
             <Ionicons name="chevron-back" size={24} color={COLORS.white} />
           </TouchableOpacity>
           <View style={styles.headerTextWrap}>
-            <Text style={styles.headerSubtitle}>SMART SENSOR NETWORK</Text>
+            <Text style={styles.headerSubtitle}>LIVE</Text>
             <Text style={styles.headerTitle} numberOfLines={1}>
               {selectedLot.name}
             </Text>
@@ -169,7 +167,7 @@ const Home = ({ navigation }) => {
           <View style={{ width: 40 }} />
         </View>
 
-        {/* High-End Dashboard Stats */}
+        {}
         <View style={styles.dashboardStats}>
           <View style={styles.statMain}>
             <Text style={styles.statMainLabel}>AVAILABLE SPOTS</Text>
@@ -195,7 +193,7 @@ const Home = ({ navigation }) => {
         </View>
       </LinearGradient>
 
-      {/* Segmented Filter Control */}
+      {}
       <View style={styles.segmentedControlWrapper}>
         <View style={styles.segmentedControl}>
           {FILTER_TYPES.map((filter) => {
@@ -221,7 +219,7 @@ const Home = ({ navigation }) => {
         </View>
       </View>
 
-      {/* Architectural Grid Layout */}
+      {}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -235,7 +233,7 @@ const Home = ({ navigation }) => {
         }
       >
         <Animated.View style={[styles.gridContainer, { opacity: fadeAnim }]}>
-          {/* The Central Driveway (Only visible when viewing 'All') */}
+          {}
           {activeFilter === "All" && filteredSlots.length > 0 && (
             <View style={styles.drivewayAisle}>
               <View style={styles.drivewayLine} />
@@ -259,7 +257,6 @@ const Home = ({ navigation }) => {
               const isOccupied = slot.currentStatus === "occupied";
               const isReserved = slot.currentStatus === "reserved";
 
-              // Determine layout position for architectural view
               const isLeftSide = index % 2 === 0;
 
               return (
@@ -278,7 +275,7 @@ const Home = ({ navigation }) => {
                       isLeftSide ? styles.borderRight : styles.borderLeft,
                     ]}
                   >
-                    {/* Header: Slot Name */}
+                    {}
                     <View style={styles.slotHeader}>
                       <Text
                         style={[
@@ -292,7 +289,7 @@ const Home = ({ navigation }) => {
                       </Text>
                     </View>
 
-                    {/* Body: Status Visualization */}
+                    {}
                     <View style={styles.slotBody}>
                       {isAvailable && (
                         <>
@@ -355,7 +352,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#F4F6F8",
   },
 
-  /* Header Architecture */
   headerGradient: {
     paddingBottom: 24,
     borderBottomLeftRadius: 32,
@@ -393,7 +389,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
 
-  /* Hero Dashboard Stats */
   dashboardStats: {
     flexDirection: "row",
     backgroundColor: "rgba(0,0,0,0.15)",
@@ -434,7 +429,6 @@ const styles = StyleSheet.create({
   },
   statSecValue: { color: COLORS.white, fontSize: 16, fontWeight: "800" },
 
-  /* Segmented Control Pill */
   segmentedControlWrapper: {
     paddingHorizontal: 20,
     marginTop: 20,
@@ -443,7 +437,8 @@ const styles = StyleSheet.create({
   },
   segmentedControl: {
     flexDirection: "row",
-    backgroundColor: "#E2E8F0", // Light slate
+    backgroundColor: "#E2E8F0", 
+
     borderRadius: 12,
     padding: 4,
   },
@@ -468,7 +463,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
-  /* Grid Layout */
   scrollView: { flex: 1 },
   scrollContent: { paddingBottom: 100, paddingTop: 10 },
   gridContainer: {
@@ -478,7 +472,6 @@ const styles = StyleSheet.create({
     position: "relative",
   },
 
-  /* Central Driveway */
   drivewayAisle: {
     position: "absolute",
     top: 0,
@@ -496,7 +489,6 @@ const styles = StyleSheet.create({
     borderStyle: "dashed",
   },
 
-  /* Slot Wrappers & Cards */
   slotWrapper: {
     width: "50%",
     marginBottom: SPACING.m,
@@ -508,24 +500,24 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
 
-  /* The "Hero" Available Slot */
   slotAvailable: {
     backgroundColor: COLORS.white,
     ...SHADOWS.medium,
     borderWidth: 1,
-    borderColor: "rgba(16, 185, 129, 0.2)", // Subtle green glow edge
+    borderColor: "rgba(16, 185, 129, 0.2)", 
+
   },
 
-  /* The "Muted" Unavailable Slot */
   slotMuted: {
-    backgroundColor: "#E2E8F0", // Flat grey background
+    backgroundColor: "#E2E8F0", 
+
     borderWidth: 1,
     borderColor: "#F1F5F9",
   },
 
-  /* Architectural Opening Lines */
-  borderRight: { borderRightWidth: 4, borderRightColor: COLORS.gray300 }, // Opens to the right
-  borderLeft: { borderLeftWidth: 4, borderLeftColor: COLORS.gray300 }, // Opens to the left
+  borderRight: { borderRightWidth: 4, borderRightColor: COLORS.gray300 }, 
+
+  borderLeft: { borderLeftWidth: 4, borderLeftColor: COLORS.gray300 }, 
 
   slotHeader: {
     flexDirection: "row",

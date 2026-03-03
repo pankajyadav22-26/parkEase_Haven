@@ -1,10 +1,4 @@
-import React, {
-  useContext,
-  useRef,
-  useMemo,
-  useCallback,
-  useEffect,
-} from "react";
+import React, { useContext, useRef, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -15,11 +9,6 @@ import {
   Animated,
 } from "react-native";
 import MapView, { Marker, PROVIDER_DEFAULT } from "react-native-maps";
-import BottomSheet, {
-  BottomSheetScrollView,
-  BottomSheetBackdrop,
-} from "@gorhom/bottom-sheet";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useNavigation } from "@react-navigation/native";
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -33,10 +22,14 @@ import { AuthContext } from "../contexts/AuthContext";
 
 const { width, height } = Dimensions.get("window");
 
-// Clean, high-contrast map style so markers pop clearly
 const mapStyle = [
   { elementType: "geometry", stylers: [{ color: "#f4f6f8" }] },
   { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+  {
+    featureType: "poi",
+    elementType: "geometry",
+    stylers: [{ color: "#e8eaed" }],
+  },
   {
     featureType: "road",
     elementType: "geometry",
@@ -45,28 +38,9 @@ const mapStyle = [
   {
     featureType: "water",
     elementType: "geometry",
-    stylers: [{ color: "#e0f2fe" }],
+    stylers: [{ color: "#d1e8ff" }],
   },
 ];
-
-const getDistance = (lat1, lon1, lat2, lon2) => {
-  if (!lat1 || !lon1 || !lat2 || !lon2) return null;
-  const R = 6371;
-  const toRad = (val) => (val * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return (R * c).toFixed(1);
-};
-
-const getETA = (distanceKm) => {
-  if (!distanceKm) return null;
-  const timeMins = Math.ceil((distanceKm / 30) * 60);
-  return timeMins < 1 ? "<1 min" : `${timeMins} min`;
-};
 
 const MapScreen = () => {
   const insets = useSafeAreaInsets();
@@ -74,14 +48,15 @@ const MapScreen = () => {
   const mapRef = useRef(null);
 
   const { user } = useContext(AuthContext);
-  const { parkingLots, selectedLot, setSelectedLot, userLocation } =
+  const { parkingLots, setSelectedLot, userLocation } =
     useContext(ParkingContext);
   const { esp32Statuses, checking, checkESP32Status } = useEsp32();
 
-  const bottomSheetRef = useRef(null);
-  const snapPoints = useMemo(() => ["45%", "65%"], []); // Generous sizing for all info
+  const [activeLot, setActiveLot] = useState(null);
+  const [displayLot, setDisplayLot] = useState(null);
 
-  // Syncing Animation for the Status Dot
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
   const syncPulse = useRef(new Animated.Value(0.3)).current;
 
   useEffect(() => {
@@ -105,27 +80,68 @@ const MapScreen = () => {
     }
   }, [checking]);
 
+  useEffect(() => {
+    if (activeLot) {
+      setDisplayLot(activeLot);
+
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          friction: 7,
+          tension: 50,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 0.9,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start(() => setDisplayLot(null));
+    }
+  }, [activeLot]);
+
   const handleMarkerPress = (lot) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.selectionAsync();
+    setActiveLot(lot);
     setSelectedLot(lot);
-    bottomSheetRef.current?.snapToIndex(0);
+
     checkESP32Status(lot._id);
 
-    // Offset camera slightly so the marker sits nicely above the bottom sheet
     mapRef.current?.animateToRegion(
       {
-        latitude: lot.location.coordinates[0] - 0.005,
+        latitude: lot.location.coordinates[0] - 0.003,
         longitude: lot.location.coordinates[1],
-        latitudeDelta: 0.012,
-        longitudeDelta: 0.012,
+        latitudeDelta: 0.015,
+        longitudeDelta: 0.015,
       },
-      800,
+      600,
     );
+  };
+
+  const handleMapPress = () => {
+    if (activeLot) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setActiveLot(null);
+    }
   };
 
   const centerOnUser = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (userLocation) {
+      setActiveLot(null);
       mapRef.current?.animateToRegion(
         {
           latitude: userLocation.latitude,
@@ -138,31 +154,8 @@ const MapScreen = () => {
     }
   };
 
-  const renderBackdrop = useCallback(
-    (props) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsAtIndex={-1}
-        appearsAtIndex={0}
-        opacity={0.2}
-      />
-    ),
-    [],
-  );
-
-  const distanceToLot =
-    selectedLot && userLocation
-      ? getDistance(
-          userLocation.latitude,
-          userLocation.longitude,
-          selectedLot.location.coordinates[0],
-          selectedLot.location.coordinates[1],
-        )
-      : null;
-  const eta = getETA(distanceToLot);
-
   return (
-    <GestureHandlerRootView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar
         barStyle="dark-content"
         translucent
@@ -171,7 +164,7 @@ const MapScreen = () => {
 
       <MapView
         ref={mapRef}
-        style={styles.map}
+        style={StyleSheet.absoluteFillObject}
         initialRegion={{
           latitude: userLocation?.latitude || 28.7041,
           longitude: userLocation?.longitude || 77.1025,
@@ -181,11 +174,13 @@ const MapScreen = () => {
         customMapStyle={mapStyle}
         showsUserLocation={true}
         showsMyLocationButton={false}
+        showsMapToolbar={false}
         provider={PROVIDER_DEFAULT}
         pitchEnabled={false}
+        onPress={handleMapPress}
       >
         {parkingLots.map((lot) => {
-          const isSelected = selectedLot?._id === lot._id;
+          const isSelected = activeLot?._id === lot._id;
           return (
             <Marker
               key={lot._id}
@@ -193,39 +188,20 @@ const MapScreen = () => {
                 latitude: lot.location.coordinates[0],
                 longitude: lot.location.coordinates[1],
               }}
-              onPress={() => handleMarkerPress(lot)}
-              tracksViewChanges={false} // Performance boost
+              onPress={(e) => {
+                e.stopPropagation();
+                handleMarkerPress(lot);
+              }}
+              pinColor={isSelected ? COLORS.primaryDark : COLORS.primary}
               zIndex={isSelected ? 10 : 1}
-            >
-              {/* High-Visibility Classic Marker */}
-              <View style={styles.markerContainer}>
-                <View
-                  style={[
-                    styles.markerPin,
-                    isSelected && styles.markerPinActive,
-                  ]}
-                >
-                  <MaterialCommunityIcons
-                    name="parking"
-                    size={isSelected ? 20 : 16}
-                    color={COLORS.white}
-                  />
-                </View>
-                <View
-                  style={[
-                    styles.markerTriangle,
-                    isSelected && styles.markerTriangleActive,
-                  ]}
-                />
-              </View>
-            </Marker>
+            />
           );
         })}
       </MapView>
 
-      {/* Recenter Button */}
+      {}
       <TouchableOpacity
-        style={[styles.recenterBtn, { top: insets.top }]}
+        style={[styles.recenterBtn, { top: insets.top + 80 }]}
         onPress={centerOnUser}
         activeOpacity={0.8}
       >
@@ -236,191 +212,135 @@ const MapScreen = () => {
         />
       </TouchableOpacity>
 
-      {/* The Command Center Bottom Sheet */}
-      <BottomSheet
-        ref={bottomSheetRef}
-        index={-1}
-        snapPoints={snapPoints}
-        enablePanDownToClose={true}
-        backdropComponent={renderBackdrop}
-        handleIndicatorStyle={styles.sheetIndicator}
-        backgroundStyle={styles.sheetBg}
+      {}
+      <Animated.View
+        style={[
+          styles.islandCard,
+          {
+            opacity: fadeAnim,
+            transform: [{ scale: scaleAnim }],
+            bottom: Math.max(insets.bottom, 90),
+          },
+        ]}
+        pointerEvents={activeLot ? "auto" : "none"}
       >
-        <BottomSheetScrollView
-          contentContainerStyle={styles.sheetInner}
-          showsVerticalScrollIndicator={false}
-        >
-          {selectedLot ? (
-            <>
-              {/* 1. Header & Location Data */}
-              <View style={styles.headerSection}>
-                <Text style={styles.titleText}>{selectedLot.name}</Text>
-
-                <View style={styles.addressRow}>
-                  <Ionicons name="location" size={14} color={COLORS.primary} />
-                  <Text style={styles.addressText} numberOfLines={2}>
-                    {selectedLot.location?.address}
-                  </Text>
-                </View>
-
-                {distanceToLot && (
-                  <View style={styles.distanceRow}>
-                    <Ionicons name="car" size={14} color={COLORS.gray500} />
-                    <Text style={styles.distanceText}>
-                      {distanceToLot} km away • ~{eta} driving
-                    </Text>
-                  </View>
-                )}
+        {displayLot && (
+          <View style={styles.islandInner}>
+            {}
+            <View style={styles.cardHeader}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={styles.titleText} numberOfLines={1}>
+                  {displayLot.name}
+                </Text>
+                <Text style={styles.addressText} numberOfLines={1}>
+                  {displayLot.location?.address}
+                </Text>
               </View>
+              <View style={styles.priceBadge}>
+                <Text style={styles.priceBadgeText}>
+                  ₹{displayLot.basePrice}
+                  <Text style={styles.priceSub}>/hr</Text>
+                </Text>
+              </View>
+            </View>
 
-              <View style={styles.divider} />
-
-              {/* 2. IoT System Status */}
-              <View style={styles.statusSection}>
-                <Text style={styles.sectionTitle}>System Status</Text>
-                <View
+            {}
+            <View style={styles.infoRow}>
+              <View
+                style={[
+                  styles.statusPill,
+                  {
+                    backgroundColor: checking
+                      ? COLORS.gray100
+                      : esp32Statuses[displayLot._id]
+                        ? "#E8F5E9"
+                        : "#FFEBEE",
+                  },
+                ]}
+              >
+                <Animated.View
                   style={[
-                    styles.statusBadge,
+                    styles.statusDot,
                     {
+                      opacity: syncPulse,
                       backgroundColor: checking
-                        ? COLORS.gray100
-                        : esp32Statuses[selectedLot._id]
-                          ? "#E8F5E9"
-                          : "#FFEBEE",
-                      borderColor: checking
-                        ? COLORS.gray200
-                        : esp32Statuses[selectedLot._id]
-                          ? "#C8E6C9"
-                          : "#FFCDD2",
+                        ? COLORS.gray500
+                        : esp32Statuses[displayLot._id]
+                          ? COLORS.success
+                          : COLORS.error,
+                    },
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.statusText,
+                    {
+                      color: checking
+                        ? COLORS.gray700
+                        : esp32Statuses[displayLot._id]
+                          ? COLORS.success
+                          : COLORS.error,
                     },
                   ]}
                 >
-                  <Animated.View
-                    style={[
-                      styles.statusDot,
-                      {
-                        opacity: syncPulse,
-                        backgroundColor: checking
-                          ? COLORS.gray500
-                          : esp32Statuses[selectedLot._id]
-                            ? COLORS.success
-                            : COLORS.error,
-                      },
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.statusText,
-                      {
-                        color: checking
-                          ? COLORS.gray700
-                          : esp32Statuses[selectedLot._id]
-                            ? COLORS.success
-                            : COLORS.error,
-                      },
-                    ]}
-                  >
-                    {checking
-                      ? "Checking sensors..."
-                      : esp32Statuses[selectedLot._id]
-                        ? "Live Tracking Online"
-                        : "Offline"}
-                  </Text>
-                </View>
+                  {checking
+                    ? "SYNCING..."
+                    : esp32Statuses[displayLot._id]
+                      ? "SENSORS ONLINE"
+                      : "OFFLINE"}
+                </Text>
               </View>
 
-              {/* 3. Stats Grid */}
-              <View style={styles.statsGrid}>
-                <View style={styles.statCard}>
-                  <Text style={styles.statLabel}>HOURLY RATE</Text>
-                  <View style={styles.statValueRow}>
-                    <Text style={styles.statValue}>
-                      ₹{selectedLot.basePrice}
-                    </Text>
-                    <Text style={styles.statUnit}>/hr</Text>
-                  </View>
-                </View>
-                <View style={styles.statCard}>
-                  <Text style={styles.statLabel}>CAPACITY</Text>
-                  <View style={styles.statValueRow}>
-                    <Text style={styles.statValue}>
-                      {selectedLot.totalSlots}
-                    </Text>
-                    <Text style={styles.statUnit}>spots</Text>
-                  </View>
-                </View>
+              <View style={styles.capacityPill}>
+                <MaterialCommunityIcons
+                  name="car-multiple"
+                  size={14}
+                  color={COLORS.gray600}
+                />
+                <Text style={styles.capacityText}>
+                  {displayLot.totalSlots} Slots
+                </Text>
               </View>
+            </View>
 
-              {/* 4. Action Buttons */}
-              <View style={styles.quickActionRow}>
-                <TouchableOpacity
-                  style={styles.quickActionBtn}
-                  onPress={() => Haptics.selectionAsync()}
-                >
-                  <Ionicons
-                    name="navigate-circle-outline"
-                    size={24}
-                    color={COLORS.gray700}
-                  />
-                  <Text style={styles.quickActionText}>Directions</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.quickActionBtn}
-                  onPress={() => Haptics.selectionAsync()}
-                >
-                  <Ionicons
-                    name="share-social-outline"
-                    size={24}
-                    color={COLORS.gray700}
-                  />
-                  <Text style={styles.quickActionText}>Share</Text>
-                </TouchableOpacity>
-              </View>
+            {}
+            <TouchableOpacity
+              style={styles.ctaButton}
+              activeOpacity={0.9}
+              onPress={() => {
+                Haptics.notificationAsync(
+                  Haptics.NotificationFeedbackType.Success,
+                );
 
-              <TouchableOpacity
-                style={styles.ctaButton}
-                activeOpacity={0.8}
-                onPress={() => {
-                  Haptics.notificationAsync(
-                    Haptics.NotificationFeedbackType.Success,
-                  );
-                  navigation.navigate("SlotGrid");
-                }}
+                navigation.navigate("SlotGrid");
+              }}
+            >
+              <LinearGradient
+                colors={[COLORS.primary, COLORS.primaryDark]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.gradientFill}
               >
-                <LinearGradient
-                  colors={[COLORS.primary, COLORS.primaryDark]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.gradientFill}
-                >
-                  <Text style={styles.ctaText}>View Layout</Text>
-                  <Ionicons
-                    name="arrow-forward"
-                    size={22}
-                    color={COLORS.white}
-                  />
-                </LinearGradient>
-              </TouchableOpacity>
-            </>
-          ) : null}
-        </BottomSheetScrollView>
-      </BottomSheet>
-    </GestureHandlerRootView>
+                <Text style={styles.ctaText}>Proceed to Layout</Text>
+                <Ionicons name="arrow-forward" size={20} color={COLORS.white} />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        )}
+      </Animated.View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.white },
-  map: { width: width, height: height },
-
-  topUiContainer: { position: "absolute", left: 16, right: 16, zIndex: 10 },
 
   recenterBtn: {
     position: "absolute",
-    right: 20,
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    right: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: COLORS.white,
     justifyContent: "center",
     alignItems: "center",
@@ -430,143 +350,80 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
 
-  markerContainer: { alignItems: "center", justifyContent: "center" },
-  markerPin: {
-    backgroundColor: COLORS.primary,
-    padding: 10,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: COLORS.white,
-    ...SHADOWS.small,
+  islandCard: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    backgroundColor: COLORS.white,
+    borderRadius: 28,
+    ...SHADOWS.dark,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 16,
+    zIndex: 20,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.03)",
   },
-  markerPinActive: {
-    backgroundColor: COLORS.primaryDark,
-    transform: [{ scale: 1.15 }],
-    borderColor: COLORS.white,
+  islandInner: {
+    padding: 20,
   },
-  markerTriangle: {
-    width: 0,
-    height: 0,
-    backgroundColor: "transparent",
-    borderStyle: "solid",
-    borderLeftWidth: 6,
-    borderRightWidth: 6,
-    borderTopWidth: 8,
-    borderLeftColor: "transparent",
-    borderRightColor: "transparent",
-    borderTopColor: COLORS.white,
-    marginTop: -1,
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
   },
-  markerTriangleActive: {
-    borderTopColor: COLORS.white,
-    transform: [{ scale: 1.15 }],
-  },
-
-  /* Bottom Sheet Styling */
-  sheetBg: { backgroundColor: COLORS.white, borderRadius: 32 },
-  sheetIndicator: { backgroundColor: COLORS.gray300, width: 40, height: 5 },
-  sheetInner: { paddingHorizontal: 24, paddingTop: 10, paddingBottom: 67 },
-
-  headerSection: { marginBottom: 20 },
   titleText: {
-    fontSize: 26,
+    fontSize: 20,
     fontWeight: "900",
     color: COLORS.gray900,
     letterSpacing: -0.5,
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  addressRow: {
+  addressText: { fontSize: 13, color: COLORS.gray500, fontWeight: "600" },
+
+  priceBadge: {
+    backgroundColor: COLORS.gray50,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+  },
+  priceBadgeText: { fontSize: 16, fontWeight: "900", color: COLORS.primary },
+  priceSub: { fontSize: 11, color: COLORS.gray500 },
+
+  infoRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 6,
+    gap: 10,
+    marginBottom: 20,
   },
-  addressText: {
-    fontSize: 14,
-    color: COLORS.gray600,
-    marginLeft: 6,
-    fontWeight: "500",
-    flex: 1,
-    lineHeight: 20,
-  },
-  distanceRow: { flexDirection: "row", alignItems: "center" },
-  distanceText: {
-    fontSize: 14,
-    color: COLORS.gray600,
-    marginLeft: 6,
-    fontWeight: "600",
-  },
-
-  divider: { height: 1, backgroundColor: COLORS.gray100, marginBottom: 20 },
-
-  statusSection: { marginBottom: 20 },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: COLORS.gray500,
-    marginBottom: 8,
-    textTransform: "uppercase",
-  },
-  statusBadge: {
+  statusPill: {
     flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
-    borderWidth: 1,
   },
-  statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
-  statusText: { fontSize: 13, fontWeight: "800" },
+  statusDot: { width: 6, height: 6, borderRadius: 3, marginRight: 8 },
+  statusText: { fontSize: 11, fontWeight: "800", letterSpacing: 0.5 },
 
-  statsGrid: { flexDirection: "row", gap: 12, marginBottom: 24 },
-  statCard: {
-    flex: 1,
-    backgroundColor: COLORS.gray50,
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.gray200,
-  },
-  statLabel: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: COLORS.gray500,
-    marginBottom: 6,
-  },
-  statValueRow: { flexDirection: "row", alignItems: "baseline" },
-  statValue: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: COLORS.gray900,
-    letterSpacing: -0.5,
-  },
-  statUnit: {
-    fontSize: 13,
-    color: COLORS.gray600,
-    fontWeight: "600",
-    marginLeft: 4,
-  },
-
-  quickActionRow: { flexDirection: "row", gap: 12, marginBottom: 24 },
-  quickActionBtn: {
-    flex: 1,
+  capacityPill: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 12,
-    borderRadius: 16,
     backgroundColor: COLORS.white,
     borderWidth: 1,
     borderColor: COLORS.gray200,
-    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    gap: 6,
   },
-  quickActionText: { fontSize: 14, fontWeight: "700", color: COLORS.gray700 },
+  capacityText: { fontSize: 12, fontWeight: "800", color: COLORS.gray700 },
 
   ctaButton: {
-    height: 60,
-    borderRadius: 20,
+    height: 56,
+    borderRadius: 16,
     overflow: "hidden",
-    ...SHADOWS.medium,
   },
   gradientFill: {
     flex: 1,
@@ -575,7 +432,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
   },
-  ctaText: { color: COLORS.white, fontSize: 17, fontWeight: "800" },
+  ctaText: { color: COLORS.white, fontSize: 16, fontWeight: "800" },
 });
 
 export default MapScreen;
