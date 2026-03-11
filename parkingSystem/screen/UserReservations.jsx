@@ -21,6 +21,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import LottieView from "lottie-react-native";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { format, differenceInMinutes, differenceInHours } from "date-fns";
 
 import { COLORS, SHADOWS, SPACING } from "../constants/theme";
 
@@ -94,7 +95,7 @@ const UserReservations = ({ navigation }) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setRefreshing(true);
     fetchReservations();
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (user && user._id) fetchReservations();
@@ -110,7 +111,7 @@ const UserReservations = ({ navigation }) => {
 
     if (option === "all") {
       filteredData = [...reservations];
-    } else if (option === "today") {
+    } else if (option === "active") {
       filteredData = reservations.filter((res) => {
         const start = new Date(res.startTime);
         const end = new Date(res.endTime);
@@ -191,6 +192,7 @@ const UserReservations = ({ navigation }) => {
       (status === "Active" ||
         (status === "Upcoming" &&
           start.getTime() - now.getTime() < 15 * 60 * 1000));
+          
     const locationName = item.parkingLotId?.name || "ParkEase Location";
 
     let statusColor = COLORS.gray500;
@@ -201,6 +203,17 @@ const UserReservations = ({ navigation }) => {
     } else if (status === "Upcoming") {
       statusColor = COLORS.primary;
       statusBg = COLORS.primaryLight;
+    }
+
+    let timeRemainingStr = null;
+    if (status === "Active") {
+      const minsLeft = differenceInMinutes(end, now);
+      const hrsLeft = differenceInHours(end, now);
+      if (hrsLeft > 0) {
+        timeRemainingStr = `${hrsLeft}h ${minsLeft % 60}m left`;
+      } else {
+        timeRemainingStr = `${minsLeft}m left`;
+      }
     }
 
     return (
@@ -238,18 +251,8 @@ const UserReservations = ({ navigation }) => {
           <View style={styles.timeRow}>
             <View style={styles.timeBlock}>
               <Text style={styles.timeLabel}>ARRIVAL</Text>
-              <Text style={styles.timeValue}>
-                {start.toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </Text>
-              <Text style={styles.dateValue}>
-                {start.toLocaleDateString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                })}
-              </Text>
+              <Text style={styles.timeValue}>{format(start, "hh:mm a")}</Text>
+              <Text style={styles.dateValue}>{format(start, "MMM dd, yyyy")}</Text>
             </View>
 
             <View style={styles.durationIndicator}>
@@ -258,22 +261,15 @@ const UserReservations = ({ navigation }) => {
                 size={32}
                 color={COLORS.gray400}
               />
+              {status === "Active" && timeRemainingStr && (
+                <Text style={styles.timeLeftText}>{timeRemainingStr}</Text>
+              )}
             </View>
 
             <View style={[styles.timeBlock, { alignItems: "flex-end" }]}>
               <Text style={styles.timeLabel}>DEPARTURE</Text>
-              <Text style={styles.timeValue}>
-                {end.toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </Text>
-              <Text style={styles.dateValue}>
-                {end.toLocaleDateString(undefined, {
-                  month: "short",
-                  day: "numeric",
-                })}
-              </Text>
+              <Text style={styles.timeValue}>{format(end, "hh:mm a")}</Text>
+              <Text style={styles.dateValue}>{format(end, "MMM dd, yyyy")}</Text>
             </View>
           </View>
 
@@ -378,7 +374,7 @@ const UserReservations = ({ navigation }) => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.chipScroll}
         >
-          {["all", "today", "upcoming", "past"].map((f) => (
+          {["all", "active", "upcoming", "past"].map((f) => (
             <FilterChip
               key={f}
               label={
@@ -531,8 +527,10 @@ const styles = StyleSheet.create({
   listContent: {
     padding: 20,
     paddingBottom: 80,
+    flexGrow: 1,
   },
   emptyContainer: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingTop: 60,
@@ -659,6 +657,13 @@ const styles = StyleSheet.create({
   },
   durationIndicator: {
     paddingHorizontal: 10,
+    alignItems: "center",
+  },
+  timeLeftText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: COLORS.primary,
+    marginTop: -4,
   },
   timeLabel: {
     fontSize: 10,
@@ -704,6 +709,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 16,
     overflow: "hidden",
+    marginBottom: 4,
     ...SHADOWS.small,
   },
   disabledBtn: {

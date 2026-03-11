@@ -51,6 +51,17 @@ const Profile = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const { user, logout, loading } = useContext(AuthContext);
 
+  // Helper function to extract initials from the user's name
+  const getInitials = (name) => {
+    if (!name) return "U"; // Default 'U' for User if no name exists
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .substring(0, 2);
+  };
+
   const deleteAccount = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     Alert.alert(
@@ -131,10 +142,19 @@ const Profile = ({ navigation }) => {
                 <Text style={styles.vipName}>{user?.username || "Driver"}</Text>
               </View>
               <View style={styles.avatarWrapper}>
-                <Image
-                  source={require("../assets/images/profile.jpeg")}
-                  style={styles.avatar}
-                />
+                {/* Dynamic Avatar Logic */}
+                {user?.profileImage ? (
+                  <Image
+                    source={{ uri: user.profileImage }}
+                    style={styles.avatar}
+                  />
+                ) : (
+                  <View style={styles.avatarFallback}>
+                    <Text style={styles.avatarInitials}>
+                      {getInitials(user?.username)}
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
             <View style={styles.vipFooter}>
@@ -325,6 +345,22 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     borderWidth: 2,
     borderColor: "rgba(255,255,255,0.3)",
+  },
+  // New Styles for Dynamic Initials Avatar
+  avatarFallback: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: COLORS.white,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.3)",
+  },
+  avatarInitials: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: COLORS.primary,
   },
   vipFooter: {
     flexDirection: "row",

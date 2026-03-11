@@ -19,6 +19,9 @@ import {
   Dimensions,
   Animated,
   ActivityIndicator,
+  Modal,
+  FlatList,
+  TextInput,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -37,7 +40,7 @@ import { COLORS, SHADOWS, SPACING } from "../constants/theme";
 
 import InputField from "../components/InputField";
 
-const { width } = Dimensions.get("window");
+const { width, height } = Dimensions.get("window");
 
 const getDistance = (lat1, lon1, lat2, lon2) => {
   if (!lat1 || !lon1 || !lat2 || !lon2) return Infinity;
@@ -73,6 +76,9 @@ const Reservation = ({ navigation }) => {
   const [activeField, setActiveField] = useState("start");
   const [isLoading, setIsLoading] = useState(false);
 
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [modalSearchQuery, setModalSearchQuery] = useState("");
+
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
   const progressAnim = useRef(new Animated.Value(0.33)).current;
@@ -102,6 +108,29 @@ const Reservation = ({ navigation }) => {
       }))
       .sort((a, b) => a.distance - b.distance);
   }, [parkingLots, userLocation]);
+
+  const displayLots = useMemo(() => {
+    if (sortedLots.length === 0) return [];
+    let topLots = sortedLots.slice(0, 4);
+
+    if (selectedLot && !topLots.find((l) => l._id === selectedLot._id)) {
+      topLots.pop();
+      topLots.unshift(selectedLot);
+    }
+    return topLots;
+  }, [sortedLots, selectedLot]);
+
+  const filteredModalLots = useMemo(() => {
+    if (!modalSearchQuery.trim()) return sortedLots;
+    return sortedLots.filter(
+      (lot) =>
+        lot.name.toLowerCase().includes(modalSearchQuery.toLowerCase()) ||
+        (lot.location?.address &&
+          lot.location.address
+            .toLowerCase()
+            .includes(modalSearchQuery.toLowerCase())),
+    );
+  }, [sortedLots, modalSearchQuery]);
 
   useEffect(() => {
     if (!selectedLot && sortedLots.length > 0) setSelectedLot(sortedLots[0]);
@@ -160,6 +189,11 @@ const Reservation = ({ navigation }) => {
     }
   };
 
+  const applyPresetDuration = (hours) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setEndTime(new Date(startTime.getTime() + hours * 60 * 60 * 1000));
+  };
+
   const proceedToSlots = async () => {
     if (endTime <= startTime)
       return Alert.alert("Invalid Time", "End time must be after Start time.");
@@ -171,7 +205,11 @@ const Reservation = ({ navigation }) => {
     try {
       const priceRes = await axios.post(
         `${backendUrl}/api/booking/calculate-price`,
-        { startTime, endTime, parkingLotId: selectedLot._id },
+        {
+          startTime,
+          endTime,
+          parkingLotId: selectedLot._id,
+        },
       );
       setPayment(priceRes.data.totalAmount || 0);
 
@@ -273,6 +311,14 @@ const Reservation = ({ navigation }) => {
             navigation.navigate("Profile");
           },
         },
+        {
+          text: "OK",
+          style: "cancel",
+          onPress: () => {
+            resetForm();
+            navigation.navigate("MapExplore");
+          },
+        },
       ]);
     } catch (err) {
       Alert.alert(
@@ -280,6 +326,11 @@ const Reservation = ({ navigation }) => {
         "Payment successful, but booking failed. Contact support.",
       );
     }
+  };
+
+  const handleCloseModal = () => {
+    setShowLocationModal(false);
+    setModalSearchQuery("");
   };
 
   if (!isLoggedIn) {
@@ -307,11 +358,8 @@ const Reservation = ({ navigation }) => {
   });
 
   return (
-
     <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
       <StatusBar barStyle="dark-content" />
-
-      {}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() =>
@@ -332,8 +380,6 @@ const Reservation = ({ navigation }) => {
         </Text>
         <View style={{ width: 40 }} />
       </View>
-
-      {}
       <View style={styles.progressContainer}>
         <View style={styles.progressTrack}>
           <Animated.View
@@ -362,21 +408,30 @@ const Reservation = ({ navigation }) => {
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.flex1}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 110 : 0}
       >
-        {}
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
           {currentStep === 1 && (
             <Animated.View style={styles.stepContainer}>
-              <Text style={styles.sectionTitle}>Where to?</Text>
+              <View style={styles.rowBetween}>
+                <Text style={styles.sectionTitle}>Where to?</Text>
+                {sortedLots.length > 4 && (
+                  <TouchableOpacity onPress={() => setShowLocationModal(true)}>
+                    <Text style={styles.seeAllText}>See All</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.locationScroll}
               >
-                {sortedLots.map((lot) => {
+                {displayLots.map((lot) => {
                   const isSelected = selectedLot?._id === lot._id;
                   return (
                     <TouchableOpacity
@@ -433,7 +488,7 @@ const Reservation = ({ navigation }) => {
                     {format(startTime, "hh:mm a")}
                   </Text>
                   <Text style={styles.timeValueSub}>
-                    {format(startTime, "MMM dd, yyyy")}
+                    {format(startTime, "MMM dd")}
                   </Text>
                 </TouchableOpacity>
 
@@ -455,9 +510,22 @@ const Reservation = ({ navigation }) => {
                     {format(endTime, "hh:mm a")}
                   </Text>
                   <Text style={styles.timeValueSub}>
-                    {format(endTime, "MMM dd, yyyy")}
+                    {format(endTime, "MMM dd")}
                   </Text>
                 </TouchableOpacity>
+              </View>
+              <View style={styles.presetRow}>
+                {[1, 2, 3, 4].map((hours) => (
+                  <TouchableOpacity
+                    key={hours}
+                    style={styles.presetChip}
+                    onPress={() => applyPresetDuration(hours)}
+                  >
+                    <Text style={styles.presetText}>
+                      +{hours} Hr{hours > 1 ? "s" : ""}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
 
               <View style={styles.durationPill}>
@@ -513,12 +581,24 @@ const Reservation = ({ navigation }) => {
                   <View style={styles.emptyState}>
                     <MaterialCommunityIcons
                       name="car-off"
-                      size={48}
+                      size={60}
                       color={COLORS.gray300}
                     />
-                    <Text style={styles.emptyText}>
-                      No availability for selected times.
+                    <Text style={styles.emptyTextTitle}>No Spots Found</Text>
+                    <Text style={styles.emptyTextSub}>
+                      Try adjusting your arrival or departure time.
                     </Text>
+                    <TouchableOpacity
+                      style={styles.adjustTimeBtn}
+                      onPress={() => setCurrentStep(1)}
+                    >
+                      <Ionicons
+                        name="time-outline"
+                        size={20}
+                        color={COLORS.white}
+                      />
+                      <Text style={styles.adjustTimeText}>Adjust Time</Text>
+                    </TouchableOpacity>
                   </View>
                 )}
               </View>
@@ -527,19 +607,25 @@ const Reservation = ({ navigation }) => {
 
           {currentStep === 3 && (
             <View style={styles.stepContainer}>
-              {}
               <View style={styles.walletTicket}>
-                <View style={styles.ticketTop}>
-                  <View>
-                    <Text style={styles.tktHeader}>PARKING PASS</Text>
-                    <Text style={styles.tktLotName}>{selectedLot?.name}</Text>
+                <LinearGradient
+                  colors={[COLORS.gray900, COLORS.gray800]}
+                  style={styles.ticketTop}
+                >
+                  <View style={styles.ticketHeaderRow}>
+                    <View style={styles.flex1PaddingRight}>
+                      <Text style={styles.tktHeader}>PARKING PASS</Text>
+                      <Text style={styles.tktLotName} numberOfLines={1}>
+                        {selectedLot?.name}
+                      </Text>
+                    </View>
+                    <View style={styles.tktBadge}>
+                      <Text style={styles.tktBadgeLabel}>SPOT</Text>
+                      <Text style={styles.tktBadgeText}>{selectedSlot}</Text>
+                    </View>
                   </View>
-                  <View style={styles.tktBadge}>
-                    <Text style={styles.tktBadgeText}>Spot {selectedSlot}</Text>
-                  </View>
-                </View>
+                </LinearGradient>
 
-                {}
                 <View style={styles.perforatedLineContainer}>
                   <View style={styles.notchLeft} />
                   <View style={styles.dashedLine} />
@@ -548,38 +634,88 @@ const Reservation = ({ navigation }) => {
 
                 <View style={styles.ticketBottom}>
                   <View style={styles.tktDataRow}>
-                    <View>
+                    <View style={styles.tktCol}>
                       <Text style={styles.tktLabel}>ENTRY</Text>
                       <Text style={styles.tktValue}>
-                        {format(startTime, "MMM dd, HH:mm")}
+                        {format(startTime, "MMM dd")}
+                      </Text>
+                      <Text style={styles.tktTime}>
+                        {format(startTime, "hh:mm a")}
                       </Text>
                     </View>
-                    <View style={{ alignItems: "flex-end" }}>
+
+                    <View style={styles.tktDurationBadge}>
+                      <Ionicons name="time" size={14} color={COLORS.primary} />
+                      <Text style={styles.tktDurationText}>
+                        {differenceInHours(endTime, startTime)}h{" "}
+                        {differenceInMinutes(endTime, startTime) % 60}m
+                      </Text>
+                    </View>
+
+                    <View style={[styles.tktCol, styles.alignEnd]}>
                       <Text style={styles.tktLabel}>EXIT</Text>
                       <Text style={styles.tktValue}>
-                        {format(endTime, "MMM dd, HH:mm")}
+                        {format(endTime, "MMM dd")}
+                      </Text>
+                      <Text style={styles.tktTime}>
+                        {format(endTime, "hh:mm a")}
                       </Text>
                     </View>
                   </View>
+
+                  <View style={styles.tktUserRow}>
+                    <View style={styles.tktCol}>
+                      <Text style={styles.tktLabel}>DRIVER</Text>
+                      <Text
+                        style={[
+                          styles.tktSubValue,
+                          !name && styles.tktPlaceholder,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {name.trim() ? name : "Awaiting Info..."}
+                      </Text>
+                    </View>
+                    <View style={[styles.tktCol, styles.alignEnd]}>
+                      <Text style={styles.tktLabel}>LICENSE PLATE</Text>
+                      <View
+                        style={[
+                          styles.plateContainer,
+                          !carNumber && styles.plateContainerEmpty,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.plateText,
+                            !carNumber && styles.plateTextEmpty,
+                          ]}
+                        >
+                          {carNumber.trim() ? carNumber.toUpperCase() : "---"}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
                   <View style={styles.tktTotalRow}>
-                    <Text style={styles.tktTotalLabel}>Amount Due</Text>
+                    <View>
+                      <Text style={styles.tktTotalLabel}>Amount Due</Text>
+                      <Text style={styles.tktTaxLabel}>
+                        Includes taxes & fees
+                      </Text>
+                    </View>
                     <Text style={styles.tktTotalValue}>₹{payment}</Text>
                   </View>
                 </View>
               </View>
 
-              <Text
-                style={[
-                  styles.sectionTitle,
-                  { marginTop: SPACING.xl, marginBottom: SPACING.m },
-                ]}
-              >
-                Vehicle & Driver
+              <Text style={[styles.sectionTitle, styles.vehicleDriverTitle]}>
+                Vehicle & Driver Details
               </Text>
+
               <InputField
                 label="Driver Name"
                 iconName="account"
-                placeholder="Enter name"
+                placeholder="Enter your full name"
                 value={name}
                 onChangeText={setName}
               />
@@ -588,62 +724,61 @@ const Reservation = ({ navigation }) => {
                 iconName="car-back"
                 placeholder="e.g. KA-01-AB-1234"
                 value={carNumber}
-                onChangeText={setCarNumber}
+                onChangeText={(text) => setCarNumber(text.toUpperCase())}
+                autoCapitalize="characters"
               />
             </View>
           )}
         </ScrollView>
-      </KeyboardAvoidingView>
-
-      {}
-      <View style={styles.dockedFooter}>
-        <TouchableOpacity
-          style={[
-            styles.primaryBtn,
-            (isLoading ||
+        <View style={styles.dockedFooter}>
+          <TouchableOpacity
+            style={[
+              styles.primaryBtn,
+              (isLoading ||
+                (currentStep === 2 && !selectedSlot) ||
+                (currentStep === 3 && (!name || !carNumber))) &&
+                styles.btnDisabled,
+            ]}
+            disabled={
+              isLoading ||
               (currentStep === 2 && !selectedSlot) ||
-              (currentStep === 3 && (!name || !carNumber))) &&
-              styles.btnDisabled,
-          ]}
-          disabled={
-            isLoading ||
-            (currentStep === 2 && !selectedSlot) ||
-            (currentStep === 3 && (!name || !carNumber))
-          }
-          onPress={() => {
-            if (currentStep === 1) proceedToSlots();
-            else if (currentStep === 2) setCurrentStep(3);
-            else handlePayment();
-          }}
-          activeOpacity={0.8}
-        >
-          <LinearGradient
-            colors={[COLORS.primary, COLORS.primaryDark]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.gradientFill}
+              (currentStep === 3 && (!name || !carNumber))
+            }
+            onPress={() => {
+              if (currentStep === 1) proceedToSlots();
+              else if (currentStep === 2) setCurrentStep(3);
+              else handlePayment();
+            }}
+            activeOpacity={0.8}
           >
-            {isLoading ? (
-              <ActivityIndicator color={COLORS.white} />
-            ) : (
-              <>
-                <Text style={styles.btnText}>
-                  {currentStep === 1
-                    ? "Find Spots"
-                    : currentStep === 2
-                      ? `Confirm Spot ${selectedSlot || ""}`
-                      : `Pay ₹${payment}`}
-                </Text>
-                <Ionicons
-                  name={currentStep === 3 ? "lock-closed" : "arrow-forward"}
-                  size={20}
-                  color={COLORS.white}
-                />
-              </>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
+            <LinearGradient
+              colors={[COLORS.primary, COLORS.primaryDark]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.gradientFill}
+            >
+              {isLoading ? (
+                <ActivityIndicator color={COLORS.white} />
+              ) : (
+                <>
+                  <Text style={styles.btnText}>
+                    {currentStep === 1
+                      ? `Find Spots`
+                      : currentStep === 2
+                        ? `Confirm Spot ${selectedSlot || ""}`
+                        : `Pay ₹${payment}`}
+                  </Text>
+                  <Ionicons
+                    name={currentStep === 3 ? "lock-closed" : "arrow-forward"}
+                    size={20}
+                    color={COLORS.white}
+                  />
+                </>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
 
       {showPicker && (
         <DateTimePicker
@@ -654,6 +789,126 @@ const Reservation = ({ navigation }) => {
           minimumDate={new Date()}
         />
       )}
+      <Modal
+        visible={showLocationModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>All Locations</Text>
+            <TouchableOpacity
+              onPress={handleCloseModal}
+              style={styles.modalCloseBtn}
+            >
+              <Ionicons name="close" size={24} color={COLORS.gray800} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.modalSearchContainer}>
+            <Ionicons name="search" size={20} color={COLORS.gray400} />
+            <TextInput
+              style={styles.modalSearchInput}
+              placeholder="Search by name or address..."
+              placeholderTextColor={COLORS.gray400}
+              value={modalSearchQuery}
+              onChangeText={setModalSearchQuery}
+              autoCapitalize="none"
+            />
+            {modalSearchQuery.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setModalSearchQuery("")}
+                style={{ padding: 4 }}
+              >
+                <Ionicons
+                  name="close-circle"
+                  size={20}
+                  color={COLORS.gray400}
+                />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {filteredModalLots.length > 0 ? (
+            <FlatList
+              data={filteredModalLots}
+              keyExtractor={(item) => item._id}
+              contentContainerStyle={styles.modalList}
+              showsVerticalScrollIndicator={false}
+              renderItem={({ item }) => {
+                const isSelected = selectedLot?._id === item._id;
+                return (
+                  <TouchableOpacity
+                    style={[
+                      styles.modalListItem,
+                      isSelected && styles.modalListItemActive,
+                    ]}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setSelectedLot(item);
+                      handleCloseModal();
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.modalItemLeft}>
+                      <View
+                        style={[
+                          styles.modalItemIconBg,
+                          isSelected && { backgroundColor: COLORS.white },
+                        ]}
+                      >
+                        <MaterialCommunityIcons
+                          name="map-marker"
+                          size={22}
+                          color={isSelected ? COLORS.primary : COLORS.gray500}
+                        />
+                      </View>
+                      <View style={styles.modalItemTextContainer}>
+                        <Text
+                          style={[
+                            styles.modalItemTitle,
+                            isSelected && styles.textPrimary,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {item.name}
+                        </Text>
+                        <Text style={styles.modalItemSub} numberOfLines={1}>
+                          {item.location?.address}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.modalItemRight}>
+                      <Text style={styles.modalItemDist}>
+                        {item.distance === Infinity
+                          ? ""
+                          : `${item.distance.toFixed(1)} km`}
+                      </Text>
+                      <View style={styles.modalPriceBadge}>
+                        <Text style={styles.modalPriceText}>
+                          ₹{item.basePrice}/hr
+                        </Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          ) : (
+            <View style={styles.modalEmptyState}>
+              <Ionicons
+                name="search-outline"
+                size={64}
+                color={COLORS.gray200}
+              />
+              <Text style={styles.modalEmptyTitle}>No locations found</Text>
+              <Text style={styles.modalEmptySub}>
+                Try a different search term.
+              </Text>
+            </View>
+          )}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -661,8 +916,7 @@ const Reservation = ({ navigation }) => {
 export default Reservation;
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#F9FAFB" }, 
-
+  safeArea: { flex: 1, backgroundColor: "#F9FAFB" },
   flex1: { flex: 1 },
   centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   authMessage: { fontSize: 16, color: COLORS.gray600, marginVertical: 20 },
@@ -714,12 +968,15 @@ const styles = StyleSheet.create({
 
   scrollContent: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 40 },
   stepContainer: { flex: 1 },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "900",
-    color: COLORS.gray900,
+
+  rowBetween: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 16,
   },
+  sectionTitle: { fontSize: 20, fontWeight: "900", color: COLORS.gray900 },
+  seeAllText: { color: COLORS.primary, fontWeight: "700", fontSize: 14 },
 
   locationScroll: { gap: 16, paddingRight: 20, paddingVertical: 10 },
   locCard: {
@@ -776,6 +1033,24 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
+  presetRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 16,
+  },
+  presetChip: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    marginHorizontal: 4,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+    ...SHADOWS.light,
+  },
+  presetText: { fontSize: 13, fontWeight: "800", color: COLORS.gray700 },
+
   durationPill: {
     flexDirection: "row",
     alignItems: "center",
@@ -820,61 +1095,112 @@ const styles = StyleSheet.create({
     ...SHADOWS.medium,
   },
   slotText: { fontSize: 16, fontWeight: "900", color: COLORS.gray700 },
+
   emptyState: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 60,
+    paddingVertical: 40,
     width: "100%",
   },
-  emptyText: { color: COLORS.gray500, marginTop: 12, fontWeight: "600" },
+  emptyTextTitle: {
+    color: COLORS.gray900,
+    fontSize: 18,
+    fontWeight: "800",
+    marginTop: 16,
+  },
+  emptyTextSub: {
+    color: COLORS.gray500,
+    marginTop: 8,
+    fontWeight: "500",
+    textAlign: "center",
+  },
+  adjustTimeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 20,
+  },
+  adjustTimeText: {
+    color: COLORS.white,
+    fontWeight: "800",
+    fontSize: 15,
+    marginLeft: 8,
+  },
 
   walletTicket: {
     backgroundColor: COLORS.white,
     borderRadius: 24,
-    ...SHADOWS.medium,
+    ...SHADOWS.dark,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.03)",
   },
   ticketTop: {
     padding: 24,
-    backgroundColor: COLORS.gray900,
+  },
+  ticketHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
+  flex1PaddingRight: {
+    flex: 1,
+    paddingRight: 10,
+  },
   tktHeader: {
-    color: "rgba(255,255,255,0.6)",
+    color: "rgba(255,255,255,0.7)",
     fontSize: 10,
     fontWeight: "800",
-    letterSpacing: 1,
+    letterSpacing: 1.5,
+    marginBottom: 4,
   },
   tktLotName: {
     color: COLORS.white,
     fontSize: 22,
     fontWeight: "900",
-    marginTop: 4,
   },
   tktBadge: {
     backgroundColor: COLORS.white,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    alignItems: "center",
   },
-  tktBadgeText: { color: COLORS.gray900, fontWeight: "900", fontSize: 14 },
-
+  tktBadgeLabel: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: COLORS.gray500,
+    letterSpacing: 0.5,
+  },
+  tktBadgeText: {
+    color: COLORS.primary,
+    fontWeight: "900",
+    fontSize: 18,
+    marginTop: -2,
+  },
   perforatedLineContainer: {
     flexDirection: "row",
     alignItems: "center",
-    height: 20,
+    height: 30,
     backgroundColor: COLORS.white,
-    marginTop: -10,
+    marginTop: -15,
+    zIndex: 10,
   },
   notchLeft: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: "#F9FAFB",
-    marginLeft: -10,
+    marginLeft: -12,
+    borderRightWidth: 1,
+    borderColor: "rgba(0,0,0,0.05)",
   },
   dashedLine: {
     flex: 1,
@@ -882,52 +1208,142 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.gray300,
     borderStyle: "dashed",
-    marginHorizontal: 10,
+    marginHorizontal: 12,
   },
   notchRight: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: "#F9FAFB",
-    marginRight: -10,
+    marginRight: -12,
+    borderLeftWidth: 1,
+    borderColor: "rgba(0,0,0,0.05)",
   },
-
-  ticketBottom: { padding: 24, backgroundColor: COLORS.white },
+  ticketBottom: {
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 24,
+    backgroundColor: COLORS.white,
+  },
   tktDataRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 20,
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  tktCol: {
+    flex: 1,
+  },
+  alignEnd: {
+    alignItems: "flex-end",
   },
   tktLabel: {
     fontSize: 10,
     color: COLORS.gray500,
     fontWeight: "800",
-    letterSpacing: 0.5,
-    marginBottom: 4,
+    letterSpacing: 0.8,
+    marginBottom: 6,
   },
-  tktValue: { fontSize: 15, fontWeight: "900", color: COLORS.gray900 },
+  tktValue: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: COLORS.gray900,
+  },
+  tktTime: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.primary,
+    marginTop: 2,
+  },
+  tktDurationBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 4,
+  },
+  tktDurationText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: COLORS.primary,
+  },
+  tktUserRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 24,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray100,
+  },
+  tktSubValue: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: COLORS.gray800,
+  },
+  tktPlaceholder: {
+    color: COLORS.gray400,
+    fontStyle: "italic",
+    fontWeight: "600",
+  },
+  plateContainer: {
+    backgroundColor: COLORS.gray900,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.gray900,
+  },
+  plateContainerEmpty: {
+    backgroundColor: COLORS.gray50,
+    borderColor: COLORS.gray300,
+    borderStyle: "dashed",
+  },
+  plateText: {
+    color: COLORS.primaryDark,
+    fontWeight: "900",
+    fontSize: 14,
+    letterSpacing: 1,
+  },
+  plateTextEmpty: {
+    color: COLORS.gray400,
+  },
   tktTotalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: 16,
+    paddingTop: 20,
     borderTopWidth: 1,
     borderColor: COLORS.gray100,
   },
-  tktTotalLabel: { fontSize: 14, fontWeight: "800", color: COLORS.gray600 },
+  tktTotalLabel: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: COLORS.gray900,
+  },
+  tktTaxLabel: {
+    fontSize: 11,
+    color: COLORS.gray500,
+    marginTop: 2,
+  },
   tktTotalValue: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: "900",
     color: COLORS.primary,
     letterSpacing: -1,
+  },
+  vehicleDriverTitle: {
+    marginTop: SPACING.xl,
+    marginBottom: SPACING.m,
   },
 
   dockedFooter: {
     backgroundColor: COLORS.white,
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 16, 
-
+    paddingBottom: 16,
     borderTopWidth: 1,
     borderColor: "rgba(0,0,0,0.05)",
     marginBottom: 25,
@@ -942,4 +1358,127 @@ const styles = StyleSheet.create({
   },
   btnText: { color: COLORS.white, fontSize: 17, fontWeight: "900" },
   btnDisabled: { opacity: 0.6 },
+
+  modalContainer: { flex: 1, backgroundColor: "#F9FAFB" },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: COLORS.white,
+  },
+  modalTitle: { fontSize: 18, fontWeight: "900", color: COLORS.gray900 },
+  modalCloseBtn: {
+    padding: 4,
+    backgroundColor: COLORS.gray50,
+    borderRadius: 20,
+  },
+
+  modalSearchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.white,
+    marginHorizontal: 20,
+    marginTop: 16,
+    marginBottom: 8,
+    paddingHorizontal: 16,
+    height: 50,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+    ...SHADOWS.light,
+  },
+  modalSearchInput: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 15,
+    color: COLORS.gray900,
+  },
+
+  modalList: { padding: 20, paddingBottom: 60 },
+  modalListItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: COLORS.white,
+    padding: 16,
+    marginBottom: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+    ...SHADOWS.light,
+  },
+  modalListItemActive: {
+    backgroundColor: COLORS.primaryLight,
+    borderColor: COLORS.primary,
+    ...SHADOWS.medium,
+  },
+  modalItemLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  modalItemIconBg: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: COLORS.gray50,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  modalItemTextContainer: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  modalItemTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: COLORS.gray900,
+    marginBottom: 4,
+  },
+  textPrimary: { color: COLORS.primaryDark },
+  modalItemSub: { fontSize: 13, color: COLORS.gray500 },
+
+  modalItemRight: {
+    alignItems: "flex-end",
+  },
+  modalItemDist: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: COLORS.gray500,
+    marginBottom: 6,
+  },
+  modalPriceBadge: {
+    backgroundColor: COLORS.gray50,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+  },
+  modalPriceText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: COLORS.primary,
+  },
+
+  modalEmptyState: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingBottom: 100,
+  },
+  modalEmptyTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: COLORS.gray800,
+    marginTop: 16,
+  },
+  modalEmptySub: {
+    fontSize: 14,
+    color: COLORS.gray500,
+    marginTop: 8,
+  },
 });
