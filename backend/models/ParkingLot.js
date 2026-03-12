@@ -38,6 +38,11 @@ const ParkingLotSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  roiData: {
+    type: Map,
+    of: [Number],
+    default: {}
+  },
   createdAt: {
     type: Date,
     default: Date.now
