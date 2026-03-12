@@ -137,7 +137,8 @@ const UserReservations = ({ navigation }) => {
     return "";
   };
 
-  const handleOpenGate = async (reservationId) => {
+  const handleOpenGate = async (item) => {
+    const reservationId = item._id;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     try {
       setIsGateOpening(true);
@@ -167,7 +168,12 @@ const UserReservations = ({ navigation }) => {
         setTimeout(() => {
           setShowSuccessAnim(false);
           fetchReservations();
-        }, 3000);
+
+          navigation.navigate("NavigationScreen", {
+            parkingLotId: item.parkingLotId._id,
+            targetSlotName: item.slot,
+          });
+        }, 2000);
       } else {
         Alert.alert("Failed", res.data.message || "Failed to open gate.");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -192,7 +198,7 @@ const UserReservations = ({ navigation }) => {
       (status === "Active" ||
         (status === "Upcoming" &&
           start.getTime() - now.getTime() < 15 * 60 * 1000));
-          
+
     const locationName = item.parkingLotId?.name || "ParkEase Location";
 
     let statusColor = COLORS.gray500;
@@ -252,7 +258,9 @@ const UserReservations = ({ navigation }) => {
             <View style={styles.timeBlock}>
               <Text style={styles.timeLabel}>ARRIVAL</Text>
               <Text style={styles.timeValue}>{format(start, "hh:mm a")}</Text>
-              <Text style={styles.dateValue}>{format(start, "MMM dd, yyyy")}</Text>
+              <Text style={styles.dateValue}>
+                {format(start, "MMM dd, yyyy")}
+              </Text>
             </View>
 
             <View style={styles.durationIndicator}>
@@ -269,7 +277,9 @@ const UserReservations = ({ navigation }) => {
             <View style={[styles.timeBlock, { alignItems: "flex-end" }]}>
               <Text style={styles.timeLabel}>DEPARTURE</Text>
               <Text style={styles.timeValue}>{format(end, "hh:mm a")}</Text>
-              <Text style={styles.dateValue}>{format(end, "MMM dd, yyyy")}</Text>
+              <Text style={styles.dateValue}>
+                {format(end, "MMM dd, yyyy")}
+              </Text>
             </View>
           </View>
 
@@ -294,7 +304,7 @@ const UserReservations = ({ navigation }) => {
                     styles.actionBtn,
                     !isGateButtonEnabled && styles.disabledBtn,
                   ]}
-                  onPress={() => handleOpenGate(item._id)}
+                  onPress={() => handleOpenGate(item)}
                   disabled={!isGateButtonEnabled}
                   activeOpacity={0.8}
                 >

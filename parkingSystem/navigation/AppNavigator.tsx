@@ -9,6 +9,7 @@ import {
   UserReservations,
   Transaction,
   Home,
+  NavigationScreen
 } from "../screen/index";
 
 const Stack = createNativeStackNavigator();
@@ -58,6 +59,11 @@ export default function AppNavigator() {
         name="transactions"
         component={Transaction}
         options={{ title: "Your Transactions" }}
+      />
+      <Stack.Screen
+        name="NavigationScreen"
+        component={NavigationScreen}
+        options={{ headerShown: false, presentation: "modal" }}
       />
     </Stack.Navigator>
   );
