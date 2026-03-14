@@ -83,3 +83,5 @@ yarn-error.*
 # @end expo-cli
 
 app.config.js
+
+google-services.json
