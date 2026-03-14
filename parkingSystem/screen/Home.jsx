@@ -142,8 +142,6 @@ const Home = ({ navigation }) => {
         translucent
         backgroundColor="transparent"
       />
-
-      {}
       <LinearGradient
         colors={[COLORS.primary, COLORS.primaryDark]}
         style={[styles.headerGradient, { paddingTop: insets.top + SPACING.s }]}
@@ -166,8 +164,6 @@ const Home = ({ navigation }) => {
           </View>
           <View style={{ width: 40 }} />
         </View>
-
-        {}
         <View style={styles.dashboardStats}>
           <View style={styles.statMain}>
             <Text style={styles.statMainLabel}>AVAILABLE SPOTS</Text>
@@ -192,8 +188,6 @@ const Home = ({ navigation }) => {
           </View>
         </View>
       </LinearGradient>
-
-      {}
       <View style={styles.segmentedControlWrapper}>
         <View style={styles.segmentedControl}>
           {FILTER_TYPES.map((filter) => {
@@ -218,8 +212,6 @@ const Home = ({ navigation }) => {
           })}
         </View>
       </View>
-
-      {}
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -233,7 +225,6 @@ const Home = ({ navigation }) => {
         }
       >
         <Animated.View style={[styles.gridContainer, { opacity: fadeAnim }]}>
-          {}
           {activeFilter === "All" && filteredSlots.length > 0 && (
             <View style={styles.drivewayAisle}>
               <View style={styles.drivewayLine} />
@@ -275,7 +266,6 @@ const Home = ({ navigation }) => {
                       isLeftSide ? styles.borderRight : styles.borderLeft,
                     ]}
                   >
-                    {}
                     <View style={styles.slotHeader}>
                       <Text
                         style={[
@@ -288,8 +278,6 @@ const Home = ({ navigation }) => {
                         {slot.slotName}
                       </Text>
                     </View>
-
-                    {}
                     <View style={styles.slotBody}>
                       {isAvailable && (
                         <>
@@ -437,7 +425,7 @@ const styles = StyleSheet.create({
   },
   segmentedControl: {
     flexDirection: "row",
-    backgroundColor: "#E2E8F0", 
+    backgroundColor: "#E2E8F0",
 
     borderRadius: 12,
     padding: 4,
@@ -485,7 +473,7 @@ const styles = StyleSheet.create({
     flex: 1,
     width: 2,
     borderWidth: 1,
-    borderColor: "#CBD5E1", 
+    borderColor: "#CBD5E1",
     borderStyle: "dashed",
   },
 
@@ -504,20 +492,19 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     ...SHADOWS.medium,
     borderWidth: 1,
-    borderColor: "rgba(16, 185, 129, 0.2)", 
-
+    borderColor: "rgba(16, 185, 129, 0.2)",
   },
 
   slotMuted: {
-    backgroundColor: "#E2E8F0", 
+    backgroundColor: "#E2E8F0",
 
     borderWidth: 1,
     borderColor: "#F1F5F9",
   },
 
-  borderRight: { borderRightWidth: 4, borderRightColor: COLORS.gray300 }, 
+  borderRight: { borderRightWidth: 4, borderRightColor: COLORS.gray300 },
 
-  borderLeft: { borderLeftWidth: 4, borderLeftColor: COLORS.gray300 }, 
+  borderLeft: { borderLeftWidth: 4, borderLeftColor: COLORS.gray300 },
 
   slotHeader: {
     flexDirection: "row",

@@ -11,6 +11,8 @@ import {
   Keyboard,
   Linking,
   Platform,
+  ActivityIndicator, 
+
 } from "react-native";
 import MapView, { Marker, PROVIDER_DEFAULT } from "react-native-maps";
 import { useNavigation } from "@react-navigation/native";
@@ -69,7 +71,8 @@ const MapScreen = () => {
   const mapRef = useRef(null);
 
   const { user } = useContext(AuthContext);
-  const { parkingLots, setSelectedLot, userLocation } =
+
+  const { parkingLots, setSelectedLot, userLocation, fetchParkingLots } =
     useContext(ParkingContext);
   const { esp32Statuses, checking, checkESP32Status } = useEsp32();
 
@@ -80,11 +83,13 @@ const MapScreen = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
 
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
   const syncPulse = useRef(new Animated.Value(0.3)).current;
 
-  const filteredLots = parkingLots.filter(
+  const filteredLots = (parkingLots || []).filter(
     (lot) =>
       lot.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (lot.location?.address &&
@@ -236,6 +241,15 @@ const MapScreen = () => {
     });
   };
 
+  const handleRefreshMap = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setIsRefreshing(true);
+    await fetchParkingLots(); 
+
+    setIsRefreshing(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar
@@ -274,14 +288,18 @@ const MapScreen = () => {
                 e.stopPropagation();
                 handleMarkerPress(lot);
               }}
-              pinColor={isSelected ? COLORS.primaryDark : COLORS.primary}
+              pinColor={
+                lot.isEmergencyMode
+                  ? COLORS.error
+                  : isSelected
+                    ? COLORS.primaryDark
+                    : COLORS.primary
+              }
               zIndex={isSelected ? 10 : 1}
             />
           );
         })}
       </MapView>
-
-      {}
       <View style={[styles.searchWrapper, { top: insets.top + 10 }]}>
         <View style={styles.searchInputContainer}>
           <Ionicons
@@ -314,7 +332,6 @@ const MapScreen = () => {
           )}
         </View>
 
-        {}
         {isSearching && searchQuery.length > 0 && (
           <View style={styles.suggestionsContainer}>
             {filteredLots.length > 0 ? (
@@ -351,22 +368,41 @@ const MapScreen = () => {
         )}
       </View>
 
-      {}
       {!isKeyboardVisible && (
-        <TouchableOpacity
-          style={[styles.recenterBtn, { top: insets.top + 75 }]}
-          onPress={centerOnUser}
-          activeOpacity={0.8}
-        >
-          <MaterialCommunityIcons
-            name="crosshairs-gps"
-            size={24}
-            color={COLORS.gray800}
-          />
-        </TouchableOpacity>
+        <>
+          {}
+          <TouchableOpacity
+            style={[styles.floatingActionBtn, { top: insets.top + 75 }]}
+            onPress={centerOnUser}
+            activeOpacity={0.8}
+          >
+            <MaterialCommunityIcons
+              name="crosshairs-gps"
+              size={24}
+              color={COLORS.gray800}
+            />
+          </TouchableOpacity>
+
+          {}
+          <TouchableOpacity
+            style={[styles.floatingActionBtn, { top: insets.top + 135 }]}
+            onPress={handleRefreshMap}
+            activeOpacity={0.8}
+            disabled={isRefreshing}
+          >
+            {isRefreshing ? (
+              <ActivityIndicator size="small" color={COLORS.primary} />
+            ) : (
+              <Ionicons
+                name="sync"
+                size={22}
+                color={COLORS.gray800}
+              />
+            )}
+          </TouchableOpacity>
+        </>
       )}
 
-      {}
       <Animated.View
         style={[
           styles.islandCard,
@@ -398,53 +434,74 @@ const MapScreen = () => {
             </View>
 
             <View style={styles.infoRow}>
-              {}
-              <View
-                style={[
-                  styles.statusPill,
-                  {
-                    backgroundColor: checking
-                      ? COLORS.gray100
-                      : esp32Statuses[displayLot._id]
-                        ? "#E8F5E9"
-                        : "#FFEBEE",
-                  },
-                ]}
-              >
-                <Animated.View
+              {displayLot.isEmergencyMode ? (
+                <View
                   style={[
-                    styles.statusDot,
+                    styles.statusPill,
                     {
-                      opacity: syncPulse,
-                      backgroundColor: checking
-                        ? COLORS.gray500
-                        : esp32Statuses[displayLot._id]
-                          ? COLORS.success
-                          : COLORS.error,
-                    },
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.statusText,
-                    {
-                      color: checking
-                        ? COLORS.gray700
-                        : esp32Statuses[displayLot._id]
-                          ? COLORS.success
-                          : COLORS.error,
+                      backgroundColor: "#FFEBEE",
+                      borderColor: COLORS.error,
+                      borderWidth: 1,
                     },
                   ]}
                 >
-                  {checking
-                    ? "SYNCING..."
-                    : esp32Statuses[displayLot._id]
-                      ? "ONLINE"
-                      : "OFFLINE"}
-                </Text>
-              </View>
+                  <Ionicons
+                    name="warning"
+                    size={14}
+                    color={COLORS.error}
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={[styles.statusText, { color: COLORS.error }]}>
+                    EVACUATING
+                  </Text>
+                </View>
+              ) : (
+                <View
+                  style={[
+                    styles.statusPill,
+                    {
+                      backgroundColor: checking
+                        ? COLORS.gray100
+                        : esp32Statuses[displayLot._id]
+                          ? "#E8F5E9"
+                          : "#FFEBEE",
+                    },
+                  ]}
+                >
+                  <Animated.View
+                    style={[
+                      styles.statusDot,
+                      {
+                        opacity: syncPulse,
+                        backgroundColor: checking
+                          ? COLORS.gray500
+                          : esp32Statuses[displayLot._id]
+                            ? COLORS.success
+                            : COLORS.error,
+                      },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.statusText,
+                      {
+                        color: checking
+                          ? COLORS.gray700
+                          : esp32Statuses[displayLot._id]
+                            ? COLORS.success
+                            : COLORS.error,
+                      },
+                    ]}
+                  >
+                    {checking
+                      ? "SYNCING..."
+                      : esp32Statuses[displayLot._id]
+                        ? "ONLINE"
+                        : "OFFLINE"}
+                  </Text>
+                </View>
+              )}
 
-              {}
               <View style={styles.infoBadge}>
                 <MaterialCommunityIcons
                   name="car-multiple"
@@ -456,7 +513,6 @@ const MapScreen = () => {
                 </Text>
               </View>
 
-              {}
               {userLocation && (
                 <View style={styles.infoBadge}>
                   <MaterialCommunityIcons
@@ -476,8 +532,6 @@ const MapScreen = () => {
                 </View>
               )}
             </View>
-
-            {}
             <View style={styles.actionRow}>
               <TouchableOpacity
                 style={styles.directionBtn}
@@ -486,31 +540,55 @@ const MapScreen = () => {
               >
                 <Ionicons name="navigate" size={24} color={COLORS.primary} />
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.ctaButton}
-                activeOpacity={0.9}
-                onPress={() => {
-                  Haptics.notificationAsync(
-                    Haptics.NotificationFeedbackType.Success,
-                  );
-                  navigation.navigate("SlotGrid");
-                }}
-              >
-                <LinearGradient
-                  colors={[COLORS.primary, COLORS.primaryDark || "#000"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.gradientFill}
+              {displayLot.isEmergencyMode ? (
+                <View
+                  style={[
+                    styles.ctaButton,
+                    {
+                      backgroundColor: COLORS.error,
+                      justifyContent: "center",
+                      alignItems: "center",
+                    },
+                  ]}
                 >
-                  <Text style={styles.ctaText}>Proceed to Layout</Text>
-                  <Ionicons
-                    name="arrow-forward"
-                    size={20}
-                    color={COLORS.white}
-                  />
-                </LinearGradient>
-              </TouchableOpacity>
+                  <Text style={styles.ctaText}>EMERGENCY</Text>
+                  <Text
+                    style={{
+                      color: "white",
+                      fontSize: 10,
+                      fontWeight: "700",
+                      marginTop: 2,
+                    }}
+                  >
+                    Evacuation in progress
+                  </Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.ctaButton}
+                  activeOpacity={0.9}
+                  onPress={() => {
+                    Haptics.notificationAsync(
+                      Haptics.NotificationFeedbackType.Success,
+                    );
+                    navigation.navigate("SlotGrid");
+                  }}
+                >
+                  <LinearGradient
+                    colors={[COLORS.primary, COLORS.primaryDark || "#000"]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.gradientFill}
+                  >
+                    <Text style={styles.ctaText}>Proceed to Layout</Text>
+                    <Ionicons
+                      name="arrow-forward"
+                      size={20}
+                      color={COLORS.white}
+                    />
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         )}
@@ -594,7 +672,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
-  recenterBtn: {
+  floatingActionBtn: {
     position: "absolute",
     right: 16,
     width: 48,

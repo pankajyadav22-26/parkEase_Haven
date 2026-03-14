@@ -1,6 +1,8 @@
 const Booking = require("../models/Booking");
 const PricingDataset = require("../models/PricingDataset");
 const Slot = require("../models/Slot");
+const ParkingLot = require("../models/ParkingLot"); 
+
 const axios = require("axios");
 const NodeCache = require("node-cache");
 const myCache = new NodeCache({ stdTTL: 300 });
@@ -14,6 +16,12 @@ module.exports = {
     }
 
     try {
+
+      const lot = await ParkingLot.findById(parkingLotId);
+      if (lot && lot.isEmergencyMode) {
+          return res.status(403).json({ message: "Cannot save booking: Evacuation in progress." });
+      }
+
       const booking = new Booking({
         userId,
         parkingLotId,
@@ -54,15 +62,18 @@ module.exports = {
       res.status(500).json({ message: "Internal server error" });
     }
   },
+
   fetchBooking: async (req, res) => {
     try {
       const bookings = await Booking.find({ userId: req.params.userId })
-        .populate('parkingLotId', 'name address location mqttTopicPrefix');
+
+        .populate('parkingLotId', 'name address location mqttTopicPrefix isEmergencyMode');
       res.json(bookings);
     } catch (err) {
       res.status(500).json({ error: 'Something went wrong' });
     }
   },
+
   calculatePrice: async (req, res) => {
     const { startTime, endTime, parkingLotId } = req.body;
 
@@ -70,13 +81,19 @@ module.exports = {
       return res.status(400).json({ message: "Start time, End time, and parkingLotId required" });
     }
 
-    const cacheKey = `price_${parkingLotId}_${startTime}_${endTime}`;
-    const cachedData = myCache.get(cacheKey);
-    if (cachedData) {
-      return res.status(200).json(cachedData);
-    }
-
     try {
+
+      const lot = await ParkingLot.findById(parkingLotId);
+      if (lot && lot.isEmergencyMode) {
+          return res.status(403).json({ message: "Cannot calculate price: Evacuation in progress." });
+      }
+
+      const cacheKey = `price_${parkingLotId}_${startTime}_${endTime}`;
+      const cachedData = myCache.get(cacheKey);
+      if (cachedData) {
+        return res.status(200).json(cachedData);
+      }
+
       const start = new Date(startTime);
       const end = new Date(endTime);
       const durationHours = (end - start) / (1000 * 60 * 60);

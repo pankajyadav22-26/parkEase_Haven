@@ -22,6 +22,7 @@ const paymentSaveRouter = require('./routes/paymentSaveRoute');
 const transactionRouter = require('./routes/transactionRoute');
 const openGateRouter = require('./routes/gateOpenRoute');
 const esp32Check = require('./routes/esp32Route');
+const emergencyRoutes = require('./routes/emergencyRoute');
 
 const port = process.env.PORT || 3000;
 
@@ -43,5 +44,6 @@ app.use('/api/payment', paymentSaveRouter);
 app.use('/api/transaction', transactionRouter);
 app.use('/api/gate', openGateRouter);
 app.use('/api/esp32', esp32Check);
+app.use('/api/admin', emergencyRoutes);
 
 app.listen(port, () => console.log(`Server running on port ${port}`));

@@ -43,6 +43,10 @@ const ParkingLotSchema = new mongoose.Schema({
     of: [Number],
     default: {}
   },
+  isEmergencyMode: {
+    type: Boolean,
+    default: false
+  },
   createdAt: {
     type: Date,
     default: Date.now

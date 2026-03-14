@@ -18,6 +18,14 @@ const UserSchema = new mongoose.Schema({
         type: String,
         required: true,
     },
-}, {timestamps: true})
+    isAdmin: {
+        type: Boolean,
+        default: false,
+    },
+    expoPushToken: {
+        type: String,
+        default: ""
+    },
+}, { timestamps: true })
 
 module.exports = mongoose.model("User", UserSchema)

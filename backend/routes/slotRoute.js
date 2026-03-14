@@ -1,7 +1,10 @@
 const router = require('express').Router()
 const slotController = require('../controllers/slotController')
 
-router.post('/createSlot', slotController.createSlot)
+const { verifyTokenAndAdmin } = require('../middleware/verifyToken');
+
+
+router.post('/createSlot', verifyTokenAndAdmin, slotController.createSlot)
 router.get('/fetchSlot', slotController.getAllSlots)
 router.post('/fetchAvailableSlot', slotController.getAvailableSlots)
 router.post('/addReservationToSlot', slotController.addReservationToSlot)

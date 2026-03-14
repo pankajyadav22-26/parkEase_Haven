@@ -138,6 +138,14 @@ const UserReservations = ({ navigation }) => {
   };
 
   const handleOpenGate = async (item) => {
+    if (item.parkingLotId?.isEmergencyMode) {
+      Alert.alert(
+        "Evacuation Active",
+        "All gates are locked open for emergency exit. Do not enter.",
+      );
+      return;
+    }
+
     const reservationId = item._id;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     try {
@@ -193,8 +201,11 @@ const UserReservations = ({ navigation }) => {
     const status = getStatus(start, end);
     const now = new Date();
 
+    const isEmergency = item.parkingLotId?.isEmergencyMode;
+
     const isGateButtonEnabled =
       !item.gateOpened &&
+      !isEmergency &&
       (status === "Active" ||
         (status === "Upcoming" &&
           start.getTime() - now.getTime() < 15 * 60 * 1000));
@@ -203,7 +214,11 @@ const UserReservations = ({ navigation }) => {
 
     let statusColor = COLORS.gray500;
     let statusBg = COLORS.gray200;
-    if (status === "Active") {
+
+    if (isEmergency) {
+      statusColor = COLORS.error;
+      statusBg = "#FFEBEE";
+    } else if (status === "Active") {
       statusColor = COLORS.success;
       statusBg = "#E8F5E9";
     } else if (status === "Upcoming") {
@@ -212,7 +227,7 @@ const UserReservations = ({ navigation }) => {
     }
 
     let timeRemainingStr = null;
-    if (status === "Active") {
+    if (status === "Active" && !isEmergency) {
       const minsLeft = differenceInMinutes(end, now);
       const hrsLeft = differenceInHours(end, now);
       if (hrsLeft > 0) {
@@ -230,7 +245,11 @@ const UserReservations = ({ navigation }) => {
               style={[styles.statusDot, { backgroundColor: statusColor }]}
             />
             <Text style={[styles.statusText, { color: statusColor }]}>
-              {status === "Active" ? "ACTIVE NOW" : status.toUpperCase()}
+              {isEmergency
+                ? "EVACUATING"
+                : status === "Active"
+                  ? "ACTIVE NOW"
+                  : status.toUpperCase()}
             </Text>
           </View>
           <View style={styles.slotBadge}>
@@ -239,10 +258,25 @@ const UserReservations = ({ navigation }) => {
         </View>
 
         <View style={styles.locationContainer}>
-          <View style={styles.iconCircle}>
-            <Ionicons name="business" size={18} color={COLORS.primary} />
+          <View
+            style={[
+              styles.iconCircle,
+              isEmergency && { backgroundColor: "#FFCDD2" },
+            ]}
+          >
+            <Ionicons
+              name={isEmergency ? "warning" : "business"}
+              size={18}
+              color={isEmergency ? COLORS.error : COLORS.primary}
+            />
           </View>
-          <Text style={styles.locationText} numberOfLines={1}>
+          <Text
+            style={[
+              styles.locationText,
+              isEmergency && { color: COLORS.error },
+            ]}
+            numberOfLines={1}
+          >
             {locationName}
           </Text>
         </View>
@@ -269,7 +303,7 @@ const UserReservations = ({ navigation }) => {
                 size={32}
                 color={COLORS.gray400}
               />
-              {status === "Active" && timeRemainingStr && (
+              {status === "Active" && timeRemainingStr && !isEmergency && (
                 <Text style={styles.timeLeftText}>{timeRemainingStr}</Text>
               )}
             </View>
@@ -298,7 +332,14 @@ const UserReservations = ({ navigation }) => {
 
           {(status === "Active" || status === "Upcoming") && (
             <View style={styles.actionRow}>
-              {!item.gateOpened ? (
+              {isEmergency ? (
+                <View style={styles.emergencyActionBadge}>
+                  <Ionicons name="warning" size={20} color={COLORS.error} />
+                  <Text style={styles.emergencyActionText}>
+                    EVACUATION Underway
+                  </Text>
+                </View>
+              ) : !item.gateOpened ? (
                 <TouchableOpacity
                   style={[
                     styles.actionBtn,
@@ -761,6 +802,26 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 15,
   },
+
+  emergencyActionBadge: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#FFEBEE",
+
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.error,
+  },
+  emergencyActionText: {
+    color: COLORS.error,
+    fontWeight: "900",
+    fontSize: 13,
+    letterSpacing: 0.5,
+  },
+
   loadingOverlay: {
     position: "absolute",
     top: 0,

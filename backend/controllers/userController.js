@@ -14,7 +14,7 @@ module.exports = {
         try {
             const user = await User.findById(req.params.id)
 
-            if(!user){
+            if (!user) {
                 return res.status(401).json("User does not exist")
             }
             const { password, __v, createdAt, updatedAt, ...userData } = user._doc
@@ -22,6 +22,21 @@ module.exports = {
 
         } catch (error) {
             res.status(500).json(error)
+        }
+    },
+    savePushToken: async (req, res) => {
+        try {
+            const { userId, token } = req.body;
+            if (!userId || !token) {
+                return res.status(400).json({ success: false, message: "Missing userId or token" });
+            }
+
+            await User.findByIdAndUpdate(userId, { expoPushToken: token });
+
+            res.status(200).json({ success: true, message: "Push token saved successfully" });
+        } catch (error) {
+            console.error("Error saving push token:", error);
+            res.status(500).json({ success: false, message: "Server error" });
         }
     }
 }

@@ -83,6 +83,8 @@ const Reservation = ({ navigation }) => {
 
   const progressAnim = useRef(new Animated.Value(0.33)).current;
 
+  const isEmergency = selectedLot?.isEmergencyMode;
+
   useEffect(() => {
     Animated.spring(progressAnim, {
       toValue: currentStep === 1 ? 0.33 : currentStep === 2 ? 0.66 : 1,
@@ -91,6 +93,12 @@ const Reservation = ({ navigation }) => {
       useNativeDriver: false,
     }).start();
   }, [currentStep]);
+
+  useEffect(() => {
+    if (isEmergency && currentStep > 1) {
+      setCurrentStep(1);
+    }
+  }, [isEmergency]);
 
   const sortedLots = useMemo(() => {
     if (!parkingLots || parkingLots.length === 0) return [];
@@ -195,6 +203,8 @@ const Reservation = ({ navigation }) => {
   };
 
   const proceedToSlots = async () => {
+    if (isEmergency) return;
+
     if (endTime <= startTime)
       return Alert.alert("Invalid Time", "End time must be after Start time.");
     if (!selectedLot)
@@ -241,6 +251,8 @@ const Reservation = ({ navigation }) => {
   };
 
   const handlePayment = async () => {
+    if (isEmergency) return;
+
     if (!name.trim() || !carNumber.trim())
       return Alert.alert("Required", "Please fill driver details.");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -433,6 +445,8 @@ const Reservation = ({ navigation }) => {
               >
                 {displayLots.map((lot) => {
                   const isSelected = selectedLot?._id === lot._id;
+                  const isLotEmergency = lot.isEmergencyMode;
+
                   return (
                     <TouchableOpacity
                       key={lot._id}
@@ -440,6 +454,12 @@ const Reservation = ({ navigation }) => {
                       style={[
                         styles.locCard,
                         isSelected && styles.locCardActive,
+                        isLotEmergency &&
+                          !isSelected &&
+                          styles.locCardEmergency,
+                        isLotEmergency &&
+                          isSelected &&
+                          styles.locCardEmergencyActive,
                       ]}
                       onPress={() => {
                         Haptics.selectionAsync();
@@ -447,13 +467,30 @@ const Reservation = ({ navigation }) => {
                       }}
                     >
                       <MaterialCommunityIcons
-                        name="map-marker-radius"
+                        name={
+                          isLotEmergency
+                            ? "alert-decagram"
+                            : "map-marker-radius"
+                        }
                         size={28}
-                        color={isSelected ? COLORS.white : COLORS.primary}
+                        color={
+                          isLotEmergency
+                            ? isSelected
+                              ? COLORS.white
+                              : COLORS.error
+                            : isSelected
+                              ? COLORS.white
+                              : COLORS.primary
+                        }
                         style={{ marginBottom: 12 }}
                       />
                       <Text
-                        style={[styles.locName, isSelected && styles.textWhite]}
+                        style={[
+                          styles.locName,
+                          isSelected && styles.textWhite,
+                          isLotEmergency &&
+                            !isSelected && { color: COLORS.error },
+                        ]}
                         numberOfLines={1}
                       >
                         {lot.name}
@@ -462,86 +499,110 @@ const Reservation = ({ navigation }) => {
                         style={[
                           styles.locDist,
                           isSelected && styles.textWhite70,
+                          isLotEmergency &&
+                            !isSelected && {
+                              color: COLORS.error,
+                              fontWeight: "800",
+                            },
                         ]}
                       >
-                        {lot.distance === Infinity
-                          ? "..."
-                          : `${lot.distance.toFixed(1)} km`}
+                        {isLotEmergency
+                          ? "Closed For Reservations"
+                          : lot.distance === Infinity
+                            ? "..."
+                            : `${lot.distance.toFixed(1)} km`}
                       </Text>
                     </TouchableOpacity>
                   );
                 })}
               </ScrollView>
-
-              <Text style={[styles.sectionTitle, { marginTop: SPACING.xl }]}>
-                When?
-              </Text>
-
-              <View style={styles.timeSelectionWrapper}>
-                <TouchableOpacity
-                  style={styles.timeBlock}
-                  onPress={() => initiatePicker("start")}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.timeLabel}>Arrive</Text>
-                  <Text style={styles.timeValueMain}>
-                    {format(startTime, "hh:mm a")}
+              {isEmergency ? (
+                <View style={styles.emergencyAlertBox}>
+                  <Ionicons name="warning" size={48} color={COLORS.error} />
+                  <Text style={styles.emergencyAlertTitle}>
+                    Closed for Reservations
                   </Text>
-                  <Text style={styles.timeValueSub}>
-                    {format(startTime, "MMM dd")}
+                  <Text style={styles.emergencyAlertText}>
+                    An emergency evacuation is currently in progress at this
+                    location. All reservations are suspended and gates are
+                    locked open for safety.
                   </Text>
-                </TouchableOpacity>
-
-                <View style={styles.timeArrow}>
-                  <Ionicons
-                    name="arrow-forward"
-                    size={24}
-                    color={COLORS.gray400}
-                  />
                 </View>
-
-                <TouchableOpacity
-                  style={styles.timeBlock}
-                  onPress={() => initiatePicker("end")}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.timeLabel}>Leave</Text>
-                  <Text style={styles.timeValueMain}>
-                    {format(endTime, "hh:mm a")}
-                  </Text>
-                  <Text style={styles.timeValueSub}>
-                    {format(endTime, "MMM dd")}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.presetRow}>
-                {[1, 2, 3, 4].map((hours) => (
-                  <TouchableOpacity
-                    key={hours}
-                    style={styles.presetChip}
-                    onPress={() => applyPresetDuration(hours)}
+              ) : (
+                <>
+                  <Text
+                    style={[styles.sectionTitle, { marginTop: SPACING.xl }]}
                   >
-                    <Text style={styles.presetText}>
-                      +{hours} Hr{hours > 1 ? "s" : ""}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <View style={styles.durationPill}>
-                <Ionicons name="time" size={16} color={COLORS.gray600} />
-                <Text style={styles.durationText}>
-                  Parking for{" "}
-                  <Text style={styles.durationBold}>
-                    {differenceInHours(endTime, startTime)}h{" "}
-                    {differenceInMinutes(endTime, startTime) % 60}m
+                    When?
                   </Text>
-                </Text>
-              </View>
+
+                  <View style={styles.timeSelectionWrapper}>
+                    <TouchableOpacity
+                      style={styles.timeBlock}
+                      onPress={() => initiatePicker("start")}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.timeLabel}>Arrive</Text>
+                      <Text style={styles.timeValueMain}>
+                        {format(startTime, "hh:mm a")}
+                      </Text>
+                      <Text style={styles.timeValueSub}>
+                        {format(startTime, "MMM dd")}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <View style={styles.timeArrow}>
+                      <Ionicons
+                        name="arrow-forward"
+                        size={24}
+                        color={COLORS.gray400}
+                      />
+                    </View>
+
+                    <TouchableOpacity
+                      style={styles.timeBlock}
+                      onPress={() => initiatePicker("end")}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.timeLabel}>Leave</Text>
+                      <Text style={styles.timeValueMain}>
+                        {format(endTime, "hh:mm a")}
+                      </Text>
+                      <Text style={styles.timeValueSub}>
+                        {format(endTime, "MMM dd")}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.presetRow}>
+                    {[1, 2, 3, 4].map((hours) => (
+                      <TouchableOpacity
+                        key={hours}
+                        style={styles.presetChip}
+                        onPress={() => applyPresetDuration(hours)}
+                      >
+                        <Text style={styles.presetText}>
+                          +{hours} Hr{hours > 1 ? "s" : ""}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  <View style={styles.durationPill}>
+                    <Ionicons name="time" size={16} color={COLORS.gray600} />
+                    <Text style={styles.durationText}>
+                      Parking for{" "}
+                      <Text style={styles.durationBold}>
+                        {differenceInHours(endTime, startTime)}h{" "}
+                        {differenceInMinutes(endTime, startTime) % 60}m
+                      </Text>
+                    </Text>
+                  </View>
+                </>
+              )}
             </Animated.View>
           )}
 
-          {currentStep === 2 && (
+          {currentStep === 2 && !isEmergency && (
             <View style={styles.stepContainer}>
               <View style={styles.spotHeader}>
                 <Text style={styles.sectionTitle}>Available Spots</Text>
@@ -605,7 +666,7 @@ const Reservation = ({ navigation }) => {
             </View>
           )}
 
-          {currentStep === 3 && (
+          {currentStep === 3 && !isEmergency && (
             <View style={styles.stepContainer}>
               <View style={styles.walletTicket}>
                 <LinearGradient
@@ -735,12 +796,15 @@ const Reservation = ({ navigation }) => {
             style={[
               styles.primaryBtn,
               (isLoading ||
+                isEmergency ||
                 (currentStep === 2 && !selectedSlot) ||
                 (currentStep === 3 && (!name || !carNumber))) &&
                 styles.btnDisabled,
+              isEmergency && { backgroundColor: COLORS.error },
             ]}
             disabled={
               isLoading ||
+              isEmergency ||
               (currentStep === 2 && !selectedSlot) ||
               (currentStep === 3 && (!name || !carNumber))
             }
@@ -752,7 +816,11 @@ const Reservation = ({ navigation }) => {
             activeOpacity={0.8}
           >
             <LinearGradient
-              colors={[COLORS.primary, COLORS.primaryDark]}
+              colors={
+                isEmergency
+                  ? [COLORS.error, "#D32F2F"]
+                  : [COLORS.primary, COLORS.primaryDark]
+              }
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.gradientFill}
@@ -762,17 +830,21 @@ const Reservation = ({ navigation }) => {
               ) : (
                 <>
                   <Text style={styles.btnText}>
-                    {currentStep === 1
-                      ? `Find Spots`
-                      : currentStep === 2
-                        ? `Confirm Spot ${selectedSlot || ""}`
-                        : `Pay ₹${payment}`}
+                    {isEmergency
+                      ? "LOCATION CLOSED"
+                      : currentStep === 1
+                        ? `Find Spots`
+                        : currentStep === 2
+                          ? `Confirm Spot ${selectedSlot || ""}`
+                          : `Pay ₹${payment}`}
                   </Text>
-                  <Ionicons
-                    name={currentStep === 3 ? "lock-closed" : "arrow-forward"}
-                    size={20}
-                    color={COLORS.white}
-                  />
+                  {!isEmergency && (
+                    <Ionicons
+                      name={currentStep === 3 ? "lock-closed" : "arrow-forward"}
+                      size={20}
+                      color={COLORS.white}
+                    />
+                  )}
                 </>
               )}
             </LinearGradient>
@@ -836,11 +908,18 @@ const Reservation = ({ navigation }) => {
               showsVerticalScrollIndicator={false}
               renderItem={({ item }) => {
                 const isSelected = selectedLot?._id === item._id;
+                const isLotEmergency = item.isEmergencyMode;
+
                 return (
                   <TouchableOpacity
                     style={[
                       styles.modalListItem,
                       isSelected && styles.modalListItemActive,
+                      isLotEmergency &&
+                        !isSelected && {
+                          borderColor: "#FFCDD2",
+                          backgroundColor: "#FFEBEE",
+                        },
                     ]}
                     onPress={() => {
                       Haptics.selectionAsync();
@@ -854,12 +933,22 @@ const Reservation = ({ navigation }) => {
                         style={[
                           styles.modalItemIconBg,
                           isSelected && { backgroundColor: COLORS.white },
+                          isLotEmergency &&
+                            !isSelected && { backgroundColor: "#FFCDD2" },
                         ]}
                       >
                         <MaterialCommunityIcons
-                          name="map-marker"
+                          name={
+                            isLotEmergency ? "alert-decagram" : "map-marker"
+                          }
                           size={22}
-                          color={isSelected ? COLORS.primary : COLORS.gray500}
+                          color={
+                            isLotEmergency
+                              ? COLORS.error
+                              : isSelected
+                                ? COLORS.primary
+                                : COLORS.gray500
+                          }
                         />
                       </View>
                       <View style={styles.modalItemTextContainer}>
@@ -867,28 +956,59 @@ const Reservation = ({ navigation }) => {
                           style={[
                             styles.modalItemTitle,
                             isSelected && styles.textPrimary,
+                            isLotEmergency &&
+                              !isSelected && { color: COLORS.error },
                           ]}
                           numberOfLines={1}
                         >
                           {item.name}
                         </Text>
-                        <Text style={styles.modalItemSub} numberOfLines={1}>
+                        <Text
+                          style={[
+                            styles.modalItemSub,
+                            isLotEmergency && { color: COLORS.error },
+                          ]}
+                          numberOfLines={1}
+                        >
                           {item.location?.address}
                         </Text>
                       </View>
                     </View>
 
                     <View style={styles.modalItemRight}>
-                      <Text style={styles.modalItemDist}>
-                        {item.distance === Infinity
-                          ? ""
-                          : `${item.distance.toFixed(1)} km`}
-                      </Text>
-                      <View style={styles.modalPriceBadge}>
-                        <Text style={styles.modalPriceText}>
-                          ₹{item.basePrice}/hr
-                        </Text>
-                      </View>
+                      {isLotEmergency ? (
+                        <View
+                          style={[
+                            styles.modalPriceBadge,
+                            {
+                              backgroundColor: COLORS.error,
+                              borderColor: COLORS.error,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.modalPriceText,
+                              { color: COLORS.white },
+                            ]}
+                          >
+                            CLOSED
+                          </Text>
+                        </View>
+                      ) : (
+                        <>
+                          <Text style={styles.modalItemDist}>
+                            {item.distance === Infinity
+                              ? ""
+                              : `${item.distance.toFixed(1)} km`}
+                          </Text>
+                          <View style={styles.modalPriceBadge}>
+                            <Text style={styles.modalPriceText}>
+                              ₹{item.basePrice}/hr
+                            </Text>
+                          </View>
+                        </>
+                      )}
                     </View>
                   </TouchableOpacity>
                 );
@@ -993,6 +1113,14 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primaryDark,
     ...SHADOWS.medium,
   },
+  locCardEmergency: {
+    backgroundColor: "#FFEBEE",
+    borderColor: "#FFCDD2",
+  },
+  locCardEmergencyActive: {
+    backgroundColor: COLORS.error,
+    borderColor: "#B71C1C",
+  },
   locName: {
     fontSize: 15,
     fontWeight: "900",
@@ -1002,6 +1130,32 @@ const styles = StyleSheet.create({
   locDist: { fontSize: 12, color: COLORS.gray500, fontWeight: "600" },
   textWhite: { color: COLORS.white },
   textWhite70: { color: "rgba(255,255,255,0.8)" },
+
+  emergencyAlertBox: {
+    backgroundColor: "#FFEBEE",
+    borderWidth: 2,
+    borderColor: COLORS.error,
+    borderRadius: 20,
+    padding: 24,
+    marginTop: 30,
+    alignItems: "center",
+    ...SHADOWS.medium,
+  },
+  emergencyAlertTitle: {
+    color: COLORS.error,
+    fontSize: 22,
+    fontWeight: "900",
+    marginTop: 12,
+    letterSpacing: 1,
+  },
+  emergencyAlertText: {
+    color: "#D32F2F",
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
+    marginTop: 8,
+    lineHeight: 20,
+  },
 
   timeSelectionWrapper: {
     flexDirection: "row",
